@@ -1,0 +1,29 @@
+flowchart TB
+  subgraph CLIENT["Покупатель"]
+    PWA["Веб-приложение (PWA)<br/>вход, QR, баланс, история"]
+  end
+  subgraph HYPER["Гипермаркет"]
+    K["Касса Set Retail 10<br/>(Кристалл)"]
+    P["Плагин DeyaBonusAccrualPlugin.jar<br/>(Java 8, на каждой кассе)"]
+    S10["Сервер Set10<br/>скидки по карте, цена 3"]
+    K --- P
+    K <--> S10
+  end
+  subgraph FLOOR3["3 этаж: кино и боулинг"]
+    CASH3["Страница кассира<br/>/cashier (браузер)"]
+    FUT["Их собственное ПО<br/>(интеграция позже)"]
+  end
+  subgraph SERVER["Сервер лояльности (наш)"]
+    API["HTTP API<br/>Node.js 22"]
+    DB[("SQLite<br/>журнал + балансы")]
+    ADM["Админка /admin"]
+    API --- DB
+    ADM --- API
+  end
+  SMS["СМС-провайдер"]
+  P -- "чек пробит: POST /api/v1/accruals" --> API
+  CASH3 -- "начисление / списание" --> API
+  FUT -. "позже: /api/v1/redeem/*" .-> API
+  PWA -- "сессия по телефону" --> API
+  API -- "код входа" --> SMS
+  PWA -. "QR = номер карты" .-> K

@@ -1,0 +1,1608 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" targetNamespace="http://crystals.ru/set10/api/metainf" xmlns="http://crystals.ru/set10/api/metainf" version="1.0"
+    elementFormDefault="qualified" attributeFormDefault="unqualified"
+    xmlns:jxb="http://java.sun.com/xml/ns/jaxb" jxb:version="2.1"
+    xmlns:tns="http://crystals.ru/set10/api/metainf">
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:element name="SetIntegration">
+        <xsd:annotation>
+            <xsd:documentation>
+                Корневой элемент описания интеграции с внешним сервисом.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexType>
+            <xsd:choice maxOccurs="1">
+                <xsd:element name="ExternalService" type="ExternalServiceType" minOccurs="0" maxOccurs="1">
+                    <xsd:unique name="OptionsKeyUniq">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность значений ключей настраиваемых параметров внешнего сервиса.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:Options/*" />
+                        <xsd:field xpath="@key" />
+                    </xsd:unique>
+                    <xsd:unique name="PaymentPluginIdUniq">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов оплат внешнего сервиса.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:PaymentPlugin" />
+                        <xsd:field xpath="@id" />
+                    </xsd:unique>
+                    <xsd:unique name="LoyaltyPluginIdUniq">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов лояльности внешнего сервиса.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:LoyaltyPlugin" />
+                        <xsd:field xpath="@id" />
+                    </xsd:unique>
+                    <xsd:unique name="CardPluginIdUniq">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов карт внешнего сервиса.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:CardPlugin" />
+                        <xsd:field xpath="@id" />
+                    </xsd:unique>
+
+                    <xsd:unique name="GoodsPluginIdUniq">
+                        <xsd:annotation><xsd:documentation>Уникальность идентификаторов плагинов товаров внешнего сервиса</xsd:documentation></xsd:annotation>
+                        <xsd:selector xpath="tns:GoodsPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                    <xsd:unique name="ExciseValidationPluginIdUniq">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов проверки акцизных марок алкогольного товара.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:ExciseValidationPlugin" />
+                        <xsd:field xpath="@id" />
+                    </xsd:unique>
+
+                    <xsd:unique name="AdvertisingActionConditionPluginIdUnique">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов условия применения рекламной акции.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:AdvertisingActionConditionPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                    <xsd:unique name="TechProcessPluginIdUnique">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов тех. процесса.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:TechProcessPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                    <xsd:unique name="AdvertisingActionProviderPluginIdUnique">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов поставки рекламных акций.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:TechProcessPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                    <xsd:unique name="FunctionPluginIdUnique">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов функциональных плагинов.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:FunctionPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                    <xsd:unique name="BarcodeTransformerPluginIdUnique">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов ШК-трансформеров.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:BarcodeTransformerPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                    <xsd:unique name="ReaderPluginIdUnique">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов считывателей.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:ReaderPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                    <xsd:unique name="WidgetPluginIdUnique">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов виджетов.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:WidgetPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                    <xsd:unique name="AgeConfirmationPluginIdUnique">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Уникальность идентификаторов плагинов подтверждения возраста.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                        <xsd:selector xpath="tns:AgeConfirmationPlugin"/>
+                        <xsd:field xpath="@id"/>
+                    </xsd:unique>
+
+                </xsd:element>
+            </xsd:choice>
+            <!-- attributes -->
+            <xsd:attribute name="set10-api-version" use="required" type="ApiVersionType">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Минимальная совместимая версия используемого API.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:attribute>
+            <xsd:attribute name="version" use="required" type="ApiVersionType">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Версия данной реализации плагинов.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:attribute>
+        </xsd:complexType>
+    </xsd:element>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:simpleType name="ExternalServiceTypes">
+        <xsd:annotation>
+            <xsd:documentation>
+                Перечень категорий внешних сервисов.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="PAYMENT">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится только к категории платежных систем.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="LOYALTY">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится к категории систем лояльности.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+            <xsd:enumeration value="GOODS">
+                <xsd:annotation>
+                    <xsd:documentation>Внешний сервис по продаже товаров</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+            <xsd:enumeration value="EXCISE_VALIDATION">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится к категории систем проверки маркированных товаров.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+            <xsd:enumeration value="FUNCTION">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится к категории функциональных действий.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+            <xsd:enumeration value="BARCODE_TRANSFORMER">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится к категории ШК-трансформеров.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+            <xsd:enumeration value="READER">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится к категории считывателей.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+            <xsd:enumeration value="WIDGET">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится к категории виджетов.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+            <xsd:enumeration value="AGE_CONFIRMATION">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится к категории систем проверки возраста.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+            <xsd:enumeration value="INFORMING_SERVICE">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внешний сервис относится к категории информирования.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+
+        </xsd:restriction>
+    </xsd:simpleType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:simpleType name="StringKeyType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип данных для строковых идентификаторов.
+                Допустимые символы: большие и маленькие буквы латинского алфавита, цифры,
+                знаки:
+                "." (точка),
+                "-" (тире),
+                "_" (нижнее подчеркивание).
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:pattern value="[a-zA-Z0-9\\.\\-\\_]{1,}" />
+        </xsd:restriction>
+    </xsd:simpleType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:simpleType name="EnumKeyType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип данных перечисления.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:list itemType="xsd:string" />
+    </xsd:simpleType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:simpleType name="ApiVersionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип для указания версии API.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:pattern value="\d{1,3}\.\d{1,3}\.\d{1,3}" />
+        </xsd:restriction>
+    </xsd:simpleType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:simpleType name="PaymentTypes">
+    	<xsd:annotation>
+    		<xsd:documentation>
+    			Перечень типов оплат, в том числе в соответствии с ФЗ-54 и ФФД.
+    		</xsd:documentation>
+    	</xsd:annotation>
+    	<xsd:restriction base="xsd:string">
+    		<xsd:enumeration value="CASH">
+    			<xsd:annotation>
+    				<xsd:documentation>Наличные</xsd:documentation>
+    			</xsd:annotation>
+    		</xsd:enumeration>
+    		<xsd:enumeration value="ELECTRONIC">
+    			<xsd:annotation>
+    				<xsd:documentation>Электронные</xsd:documentation>
+    			</xsd:annotation>
+    		</xsd:enumeration>
+    		<xsd:enumeration value="PREPAY">
+    			<xsd:annotation>
+    				<xsd:documentation>Предоплата</xsd:documentation>
+    			</xsd:annotation>
+    		</xsd:enumeration>
+    		<xsd:enumeration value="POSTPAY">
+    			<xsd:annotation>
+    				<xsd:documentation>Постоплата</xsd:documentation>
+    			</xsd:annotation>
+    		</xsd:enumeration>
+    		<xsd:enumeration value="OTHER">
+    			<xsd:annotation>
+    				<xsd:documentation>
+    					Иная оплата (встречным предоставлением)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="BONUS">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Оплата бонусными баллами
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID0">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 0 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID1">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 1 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID2">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 2 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID3">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 3 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID4">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 4 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID5">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 5 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID6">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 6 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID7">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 7 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID8">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 8 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID9">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 9 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID10">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 10 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID11">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 11 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID12">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 12 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID13">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 13 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID14">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Тип платежа с ФР индексом 14 (не ФФД)
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ID15">
+                <xsd:annotation>
+                    <xsd:documentation>Тип платежа с ФР индексом 15 (не ФФД)</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+        </xsd:restriction>
+    </xsd:simpleType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="ExternalServiceType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание интеграции с внешним сервисом.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:sequence>
+            <xsd:element name="Description" type="DescriptionStringType" maxOccurs="1" minOccurs="0">
+                <xsd:annotation>
+                    <xsd:documentation>Человекочитаемое описание внешней системы.</xsd:documentation>
+                    <xsd:appinfo>
+                        <jxb:property>
+                            <jxb:javadoc>Человекочитаемое описание внешней системы.</jxb:javadoc>
+                        </jxb:property>
+                    </xsd:appinfo>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="Options" type="OptionsType" minOccurs="0" maxOccurs="1">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень настроек внешнего сервиса.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="PaymentPlugin" type="PaymentPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень плагинов оплаты внешнего сервиса.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="PaymentPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина оплат.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*" />
+                    <xsd:field xpath="@key" />
+                </xsd:unique>
+                <xsd:unique name="PaymentPluginPersistedFieldKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей сохраняемых значений плагина оплат внешнего сервиса.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:PersistedField" />
+                    <xsd:field xpath="@key" />
+                </xsd:unique>
+            </xsd:element>
+            <xsd:element name="LoyaltyPlugin" type="LoyalPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень плагинов лояльности.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="LoyalPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина лояльности.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*" />
+                    <xsd:field xpath="@key" />
+                </xsd:unique>
+            </xsd:element>
+            <xsd:element name="CardPlugin" type="CardPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень плагинов карт.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="CardPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина карт.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*" />
+                    <xsd:field xpath="@key" />
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="GoodsPlugin" type="GoodsPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation><xsd:documentation>Перечень плагинов товаров</xsd:documentation></xsd:annotation>
+                <xsd:unique name="GoodsPluginOptionsKeyUniq">
+                    <xsd:annotation><xsd:documentation>Уникальность значений ключей настраиваемых параметров плагина товара.</xsd:documentation></xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*"/>
+                    <xsd:field xpath="@key"/>
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="ExciseValidationPlugin" type="ExciseValidationPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень плагинов проверки маркированных товаров.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="ExciseValidationPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина проверки маркированных товаров.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*" />
+                    <xsd:field xpath="@key" />
+
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="AdvertisingActionConditionPlugin" type="AdvertisingActionConditionPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Плагины условия применения рекламной акции.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="AdvertisingActionConditionPluginUnique">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина условия применения рекламной акции.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*"/>
+                    <xsd:field xpath="@key"/>
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="TechProcessPlugin" type="TechProcessPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Плагины тех. процесса.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="TechProcessPluginUnique">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина тех. процесса.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*"/>
+                    <xsd:field xpath="@key"/>
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="AdvertisingActionProviderPlugin" type="AdvertisingActionProviderPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Плагин поставщика рекламных акций для расчета лояльности по чеку.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="AdvertisingActionProviderPluginUnique">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина поставки рекламных акций.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*"/>
+                    <xsd:field xpath="@key"/>
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="FunctionPlugin" type="FunctionPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень функциональных плагинов.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="FunctionPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров функционального плагина.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*" />
+                    <xsd:field xpath="@key" />
+
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="BarcodeTransformerPlugin" type="BarcodeTransformerPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень плагинов ШК-трансформеров.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="BarcodeTransformerPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина ШК-трансформера.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*"/>
+                    <xsd:field xpath="@key"/>
+
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="ReaderPlugin" type="ReaderPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень плагинов считывателей.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="ReaderPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина считывателя.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*"/>
+                    <xsd:field xpath="@key"/>
+
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="WidgetPlugin" type="WidgetPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень плагинов виджетов.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="WidgetPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина виджета.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*"/>
+                    <xsd:field xpath="@key"/>
+                </xsd:unique>
+            </xsd:element>
+
+            <xsd:element name="AgeConfirmationPlugin" type="AgeConfirmationPluginType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень плагинов подтверждения возраста.
+                    </xsd:documentation>
+                </xsd:annotation>
+                <xsd:unique name="AgeConfirmationPluginOptionsKeyUniq">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Уникальность значений ключей настраиваемых параметров плагина подтверждения возраста.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                    <xsd:selector xpath="tns:Options/*"/>
+                    <xsd:field xpath="@key"/>
+                </xsd:unique>
+            </xsd:element>
+
+        </xsd:sequence>
+        <!-- attributes -->
+        <xsd:attribute name="id" use="required" type="StringKeyType">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Уникальный идентификатор сервиса.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="serviceType" use="required" type="ExternalServiceTypes">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Категория внешнего сервиса.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="localeKey" type="StringKeyType" use="required">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Локализованное наименование внешнего сервиса (ключа из файлов локализации).
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="PluginType" abstract="true">
+        <xsd:annotation>
+            <xsd:documentation>
+                Базовый тип плагинов.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:sequence>
+            <xsd:element name="Description" type="DescriptionStringType" maxOccurs="1" minOccurs="0">
+                <xsd:annotation>
+                    <xsd:documentation>Человекочитаемое описание плагина.</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="Options" type="OptionsType" minOccurs="0" maxOccurs="1">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень настроек внешнего сервиса.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="Assets" type="AssetsType" minOccurs="0" maxOccurs="1">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Перечень контента плагина
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+        </xsd:sequence>
+        <xsd:attribute name="id" use="required" type="StringKeyType">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Уникальный идентификатор плагина.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="localeKey" type="StringKeyType" use="required">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Локализованное наименование плагина отображаемое при выборе типа оплаты
+                    (ключа из файлов локализации).
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="workLevel" type="WorkLevelType" default="CASH">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Уровень, определяющий где должен работать плагин: касса, сервер.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+
+    <xsd:simpleType name="DescriptionStringType">
+        <xsd:annotation>
+            <xsd:documentation>Человекочитаемое описание плагина.</xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:maxLength value="3000"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:complexType name="GoodsPluginType">
+        <xsd:annotation><xsd:documentation>Описание плагина товара.</xsd:documentation></xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+                <xsd:sequence>
+                    <xsd:element name="PersistedField" type="GoodsFieldType" minOccurs="0" maxOccurs="unbounded">
+                        <xsd:annotation><xsd:documentation>Сохраняемые плагином данные.</xsd:documentation></xsd:annotation>
+                    </xsd:element>
+                </xsd:sequence>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+
+    <xsd:complexType name="PaymentPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание плагина оплат.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+                <xsd:sequence>
+                    <xsd:element name="PersistedField" type="PaymentFieldType" minOccurs="0" maxOccurs="unbounded">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Перечень данных сохраняемых плагином.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:element>
+                    <xsd:element name="PaymentName" type="PaymentNameType" minOccurs="0" maxOccurs="unbounded">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Наименование, отображаемое при выборе типа оплаты в зависимости от типа кассы
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:element>
+                </xsd:sequence>
+                <!-- attributes -->
+                <xsd:attribute name="paymentType" use="required" type="PaymentTypes">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Тип оплаты в соответствии с ФЗ-54 и ФФД.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="LoyalPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание плагина лояльности
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="CardPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание плагина карт
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="ExciseValidationPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание плагина проверки маркированных товаров
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+                <xsd:sequence>
+                    <xsd:element name="ProductTypes" type="MarkedProductType" minOccurs="0" maxOccurs="unbounded">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Тип маркируемого товара для проверки внешним сервисов валидации
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:element>
+                </xsd:sequence>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="AdvertisingActionConditionPluginType">
+        <xsd:annotation>
+            <xsd:documentation>Описание плагина условия применения рекламной акции.</xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+                <xsd:sequence>
+                    <xsd:element name="AdvertisingActionOptions" type="OptionsType" minOccurs="0" maxOccurs="1">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Перечень настроек условия акции.
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:element>
+                </xsd:sequence>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="TechProcessPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание плагина расширения тех. процесса кассы.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType"/>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="AdvertisingActionProviderPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+Плагин-поставщик рекламных акций. Данный тип плагина необходим в случаях, когда внешняя система не занимается расчетом скидок самостоятельно,
+а желает отдать расчет на откуп кассе. В таком случае внешней системе необходимо передать кассе набор условий и результатов - рекламные акций, которые затем будут
+примешаны к уже имеющимся на кассе акциям и будут участвовать в расчете лояльности для текущего чека.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType"/>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="FunctionPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание функционального плагина.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+                <xsd:attribute name="iconId" use="required" type="Icons">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Идентификатор иконки
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="BarcodeTransformerPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание функционального плагина.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="ReaderPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Плагин считыватель. Позволяет получать данные для поиска товаров, карт и т.п. из внешних систем (например внешние пик листы)
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="WidgetPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Плагин виджет. Получает данные для формирования виджета от внешних систем (например кол-во заказов).
+                Динамически обновляет данные, отображаемые в виджете.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+                <xsd:sequence>
+                    <xsd:element name="WidgetScope" type="WidgetScope" minOccurs="0" maxOccurs="unbounded">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Область видимости виджета
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:element>
+                </xsd:sequence>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="AgeConfirmationPluginType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Описание плагина подтверждения возраста.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="PluginType">
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="OptionsType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип со списком настраиваемых параметров разного типа.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:choice minOccurs="0" maxOccurs="unbounded">
+            <xsd:element name="URL" type="URLOptionType"/>
+            <xsd:element name="Integer" type="IntegerOptionType"/>
+            <xsd:element name="BinaryFile" type="BinaryFileOptionType"/>
+            <xsd:element name="String" type="StringOptionType"/>
+            <xsd:element name="Boolean" type="BooleanOptionType"/>
+            <xsd:element name="Decimal" type="DecimalOptionType"/>
+            <xsd:element name="Enum" type="EnumOptionType"/>
+        </xsd:choice>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="AssetsType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип со списком ресурсов разного типа
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:choice minOccurs="0" maxOccurs="unbounded">
+            <xsd:element name="Image" type="ImageAssetType"/>
+            <xsd:element name="Html" type="HtmlAssetType"/>
+        </xsd:choice>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="ImageAssetType">
+        <xsd:annotation>
+            <xsd:documentation>Тип контента "Изображение"</xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="Asset">
+                <xsd:attribute name="width" use="required" type="xsd:int">
+                    <xsd:annotation>
+                        <xsd:documentation>Ширина картинка в пикселях</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+                <xsd:attribute name="height" use="required" type="xsd:int">
+                    <xsd:annotation>
+                        <xsd:documentation>Высота картинка в пикселях</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+                <xsd:attribute name="base64image" use="required" type="xsd:string">
+                    <xsd:annotation>
+                        <xsd:documentation>Изображение в Base64</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <xsd:complexType name="HtmlAssetType">
+        <xsd:annotation>
+            <xsd:documentation>Тип контента "HTML-фрагмент для встраивания"</xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="Asset">
+                <xsd:attribute name="content" use="required" type="xsd:string">
+                    <xsd:annotation>
+                        <xsd:documentation>HTML-фрагмент</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="URLOptionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип URL.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="OptionBaseType">
+                <xsd:attribute name="default-value" type="xsd:string">
+                    <xsd:annotation>
+                        <xsd:documentation>Значение параметра по умолчанию.</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="IntegerOptionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Целочисленный тип.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="OptionBaseType">
+                <xsd:attribute name="minValue" type="xsd:integer">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Минимальное значение параметра.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+                <xsd:attribute name="maxValue" type="xsd:integer">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Максимальное значение параметра.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+                <xsd:attribute name="default-value" type="xsd:integer">
+                    <xsd:annotation>
+                        <xsd:documentation>Значение параметра по умолчанию.</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="BinaryFileOptionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип: файл с любыми данными. Ограничение на размер: 10Мб.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="OptionBaseType">
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="StringOptionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Строковый тип.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="OptionBaseType">
+                <xsd:attribute name="masked" type="xsd:boolean">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Признак маскирования строки ввода (для паролей).
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+                <xsd:attribute name="default-value" type="xsd:string">
+                    <xsd:annotation>
+                        <xsd:documentation>Значение параметра по умолчанию.</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+                <xsd:attribute name="multiline" type="xsd:boolean">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Признак мультистрочности поля. Косметический атрибут, делает строковый параметр на UI сервера отображаться в несколько строк вместо одной.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="BooleanOptionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Бинарный тип.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="OptionBaseType">
+                <xsd:attribute name="default-value" type="xsd:boolean">
+                    <xsd:annotation>
+                        <xsd:documentation>Значение параметра по умолчанию.</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="DecimalOptionType">
+        <xsd:annotation><xsd:documentation>Тип числовых данных с плавающей точкой.</xsd:documentation></xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="OptionBaseType">
+                <xsd:attribute name="default-value" type="xsd:decimal">
+                    <xsd:annotation>
+                        <xsd:documentation>Значение параметра по умолчанию.</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="EnumOptionType">
+        <xsd:annotation><xsd:documentation>Тип перечисления.</xsd:documentation></xsd:annotation>
+        <xsd:complexContent>
+            <xsd:extension base="OptionBaseType">
+                <xsd:attribute name="default-value" type="xsd:string">
+                    <xsd:annotation>
+                        <xsd:documentation>Значение параметра по умолчанию.</xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+                <xsd:attribute name="options" use="required" type="EnumKeyType" >
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Список значений
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:attribute>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="OptionBaseType" abstract="true">
+        <xsd:annotation>
+            <xsd:documentation>
+                Базовый тип настраиваемых параметров.
+            </xsd:documentation>
+        </xsd:annotation>
+        <!-- attributes -->
+        <xsd:attribute name="key" use="required" type="StringKeyType">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Значение ключа параметра в хранилище (ключ = значение).
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="localeKey" type="StringKeyType" use="required">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Локализованное наименование параметра (ключа из файлов локализации).
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="required" type="xsd:boolean">
+            <xsd:annotation>
+                <xsd:documentation>Флаг, определяющий, обязательно ли поле к заполнению. true если обязательно и false в противном случае. Значение по умолчанию - false.</xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="Asset" abstract="true">
+        <xsd:annotation>
+            <xsd:documentation>Базовый тип контента плагина</xsd:documentation>
+        </xsd:annotation>
+        <xsd:attribute name="usage" use="required" type="xsd:string">
+            <xsd:annotation>
+                <xsd:documentation>Место применения контента</xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="content-type" use="required" type="xsd:string">
+            <xsd:annotation>
+                <xsd:documentation>Тип контента</xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    <xsd:complexType name="GoodsFieldType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Сохраняемое в БД плагином товаров поле.
+            </xsd:documentation>
+        </xsd:annotation>
+        <!-- attributes -->
+        <xsd:attribute name="key" use="required" type="StringKeyType">
+            <xsd:annotation><xsd:documentation>Ключ сохраняемого плагином значения в хранилище.</xsd:documentation></xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="exportable" use="required" type="xsd:boolean">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Необходимость экспорта значения в ERP системы.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+    <xsd:simpleType name="MarkedProductType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип товара, подлежащего маркировке
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="SPIRITS">
+                <xsd:annotation>
+                    <xsd:documentation>Алкоголь</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="TOBACCO">
+                <xsd:annotation>
+                    <xsd:documentation>Табак</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="FOOTWEAR">
+                <xsd:annotation>
+                    <xsd:documentation>Обувь</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="JEWELRY">
+                <xsd:annotation>
+                    <xsd:documentation>Ювелирные изделия</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="PERFUMES">
+                <xsd:annotation>
+                    <xsd:documentation>Парфюмерия</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="LIGHT_INDUSTRY">
+                <xsd:annotation>
+                    <xsd:documentation>Легкая промышленность</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="TYRES">
+                <xsd:annotation>
+                    <xsd:documentation>Шины и диски</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="PHOTO">
+                <xsd:annotation>
+                    <xsd:documentation>Фототехника и вспышки</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="MILK">
+                <xsd:annotation>
+                    <xsd:documentation>Молочная продукция</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="WATER">
+                <xsd:annotation>
+                    <xsd:documentation>Вода</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="BICYCLES">
+            <xsd:annotation>
+                <xsd:documentation>Велосипеды</xsd:documentation>
+            </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="WATER_AND_BEVERAGES">
+                <xsd:annotation>
+                    <xsd:documentation>Вода и напитки (Узбекистан)</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="DRUGS">
+                <xsd:annotation>
+                    <xsd:documentation>Медикаменты (Узбекистан)</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="WHEELCHAIRS">
+                <xsd:annotation>
+                    <xsd:documentation>Кресла-коляски</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="DIETARYSUP">
+                <xsd:annotation>
+                    <xsd:documentation>Биологически-активные добавки (БАДы)</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ANTISEPTIC">
+                <xsd:annotation>
+                    <xsd:documentation>Антисептики</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="DRAFT_BEER">
+                <xsd:annotation>
+                    <xsd:documentation>Разливное пиво</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="BEER">
+                <xsd:annotation>
+                    <xsd:documentation>Пиво</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="MEDICAL_DEVICES">
+                <xsd:annotation>
+                    <xsd:documentation>Медицинское оборудование</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="CAVIAR">
+                <xsd:annotation>
+                    <xsd:documentation>Икра осетровых и лососевых рыб (штучный товар)</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="DRAFT_CAVIAR">
+                <xsd:annotation>
+                    <xsd:documentation>Икра осетровых и лососевых рыб (фасованный товар)</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="PET_FOOD">
+                <xsd:annotation>
+                    <xsd:documentation>Корма для животных</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="OIL">
+                <xsd:annotation>
+                    <xsd:documentation>Растительные масла</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="CANNED_FOOD">
+                <xsd:annotation>
+                    <xsd:documentation>Консервированные продукты</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="NONALCOHOLIC_BEER">
+                <xsd:annotation>
+                    <xsd:documentation>Безалкогольное пиво</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="VETERINARY_DRUGS">
+                <xsd:annotation>
+                    <xsd:documentation>Ветеринарные препараты</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="REHABILITATION_MEANS">
+                <xsd:annotation>
+                    <xsd:documentation>Технические средства реабилитации</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="DRAFT_BEVERAGES">
+                <xsd:annotation>
+                    <xsd:documentation>Разливные безалкогольные напитки</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="COSMETICS_AND_HOUSEHOLD_CHEMICALS">
+                <xsd:annotation>
+                    <xsd:documentation>Парфюмерно-косметическая продукция и бытовая химия</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="GROCERIES">
+                <xsd:annotation>
+                    <xsd:documentation>Бакалея</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ENGINE_OIL">
+                <xsd:annotation>
+                    <xsd:documentation>Моторные масла</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:complexType name="PaymentFieldType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип для описания сохраняемых плагином оплат полей.
+            </xsd:documentation>
+        </xsd:annotation>
+        <!-- attributes -->
+        <xsd:attribute name="key" use="required" type="StringKeyType">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Значение ключа сохраняемого плагином значения в хранилище (ключ = значение).
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="exportable" use="required" type="xsd:boolean">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Необходимость экспорта значения в ERP системы.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="visible" use="optional" type="xsd:boolean">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Необходимость визуализации значения при просмотре данных чека.
+                    Требуется также указать атрибут localeKey, если значение = true.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="localeKey" type="StringKeyType" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Локализованное наименование сохраняемого значения (ключа из файлов локализации).
+                    Если атрибут visible="true".
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+    <xsd:simpleType name="WorkLevelType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Уровень, определяющий где должен работать плагин: касса, сервер.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="CASH">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Работать только на кассах
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="ALL">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Работать на всех уровнях топологии
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="Icons">
+        <xsd:annotation>
+            <xsd:documentation>
+                Идентификаторы иконок для показа на функциональных плитках
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="SEARCH">
+                <xsd:annotation>
+                    <xsd:documentation>Поиск</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="DOCUMENT">
+                <xsd:annotation>
+                    <xsd:documentation>Документ</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="LOCK">
+                <xsd:annotation>
+                    <xsd:documentation>Замок</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="PAPER_PLANE">
+                <xsd:annotation>
+                    <xsd:documentation>Отправка</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="CANCEL">
+                <xsd:annotation>
+                    <xsd:documentation>Отмена</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="CARD">
+                <xsd:annotation>
+                    <xsd:documentation>Карта</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="DELIVERY">
+                <xsd:annotation>
+                    <xsd:documentation>Доставка</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="UPDATE_RECEIPT">
+                <xsd:annotation>
+                    <xsd:documentation>Коррекция стоимости</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="POSType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Тип кассы
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="POS">
+                <xsd:annotation>
+                    <xsd:documentation>Клавиатурная касса</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="TOUCH">
+                <xsd:annotation>
+                    <xsd:documentation>Touch-касса</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="SCO">
+                <xsd:annotation>
+                    <xsd:documentation>Касса самообслуживания</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="WidgetScope">
+        <xsd:annotation>
+            <xsd:documentation>
+                Область видимости виджета
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="FUNCTION_TILE">
+                <xsd:annotation>
+                    <xsd:documentation>Функциональная плитка</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:complexType name="PaymentNameType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Наименование, отображаемое при выборе типа оплаты в зависимости от типа кассы
+            </xsd:documentation>
+        </xsd:annotation>
+        <!-- attributes -->
+        <xsd:attribute name="posType" use="required" type="POSType">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Тип кассы
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="localeKey" use="required" type="StringKeyType">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Локализованное наименование, отображаемое при выборе типа оплаты (ключа из файлов локализации)
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+</xsd:schema>

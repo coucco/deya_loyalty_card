@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+    <entry key="bonus.service.name">Начисление бонусов (ТРЦ Дея)</entry>
+    <entry key="plugin.name">Начисление бонусов (ТРЦ Дея)</entry>
+
+    <entry key="enabled.description">Плагин включён (снимите флажок, чтобы временно прекратить отправку чеков)</entry>
+    <entry key="server.url.description">Адрес сервера лояльности для начисления (полный URL, например https://loyalty.example.ru/api/v1/accruals)</entry>
+    <entry key="api.key.description">Ключ доступа к серверу лояльности</entry>
+    <entry key="point.id.description">Идентификатор точки на сервере лояльности (по умолчанию hypermarket)</entry>
+    <entry key="card.prefix.description">Префиксы номеров карт приложения через запятую (пусто = любая карта, кроме купонов и подарочных)</entry>
+    <entry key="connection.timeout.description">Таймаут соединения с сервером, мс</entry>
+    <entry key="read.timeout.description">Таймаут ожидания ответа сервера, мс</entry>
+    <entry key="send.refunds.description">Отправлять на сервер чеки возврата (для отмены начисленных баллов)</entry>
+    <entry key="max.attempts.description">Сколько раз повторять отправку при ошибке сервера (сбои связи не считаются)</entry>
+</properties>

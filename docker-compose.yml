@@ -1,0 +1,29 @@
+# Запуск: cp .env.example .env  →  заполнить  →  docker compose up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    volumes:
+      - deya-data:/data
+    expose:
+      - "3000"
+  caddy:                       # HTTPS-сертификат выпускается и продлевается автоматически
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+volumes:
+  deya-data:
+  caddy-data:
+  caddy-config:

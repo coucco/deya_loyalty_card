@@ -1,0 +1,14 @@
+erDiagram
+  USERS ||--o{ CARDS : "владеет"
+  USERS ||--|| ACCOUNTS : "баланс"
+  USERS ||--o{ LEDGER : "журнал"
+  USERS ||--o{ HOLDS : "резервы"
+  USERS ||--o{ SESSIONS : "входы"
+  POINTS ||--o{ LEDGER : "где операция"
+  POINTS ||--o{ HOLDS : "где резерв"
+  USERS { int id PK "phone, name, consent_at, deleted_at" }
+  CARDS { text number PK "13 цифр, Luhn, status" }
+  ACCOUNTS { int balance "кэш; источник правды — LEDGER" }
+  LEDGER { int id PK "type, points со знаком, base_kop, pct_bp, receipt_key, idem_key UNIQUE" }
+  HOLDS { text id PK "status HELD/COMMITTED/CANCELLED/EXPIRED/REVERSED" }
+  POINTS { text id PK "kind earn/spend/both, accrual_bp, redeem_bp, api_key_hash" }

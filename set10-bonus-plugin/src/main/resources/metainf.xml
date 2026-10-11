@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SetIntegration set10-api-version="0.0.3" version="1.0.0" xmlns="http://crystals.ru/set10/api/metainf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://crystals.ru/set10/api/metainf metainf.xsd ">
+    <ExternalService serviceType="LOYALTY" localeKey="bonus.service.name" id="ext.deya.bonus.accrual">
+        <Options>
+            <Boolean key="enabled" localeKey="enabled.description" default-value="true"/>
+            <URL key="server.url" localeKey="server.url.description"/>
+            <String key="api.key" localeKey="api.key.description" masked="true"/>
+            <String key="point.id" localeKey="point.id.description" default-value="hypermarket"/>
+            <String key="card.prefix" localeKey="card.prefix.description"/>
+            <Integer key="connection.timeout" localeKey="connection.timeout.description" minValue="200" maxValue="30000" default-value="1500"/>
+            <Integer key="read.timeout" localeKey="read.timeout.description" minValue="200" maxValue="60000" default-value="3000"/>
+            <Boolean key="send.refunds" localeKey="send.refunds.description" default-value="true"/>
+            <Integer key="max.attempts" localeKey="max.attempts.description" minValue="1" maxValue="100000" default-value="200"/>
+        </Options>
+        <LoyaltyPlugin localeKey="plugin.name" id="ext.deya.bonus.accrual">
+            <Description>Начисление бонусов: передаёт данные пробитого чека на сервер лояльности.</Description>
+        </LoyaltyPlugin>
+    </ExternalService>
+</SetIntegration>

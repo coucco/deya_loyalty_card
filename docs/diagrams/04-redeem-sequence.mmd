@@ -1,0 +1,17 @@
+sequenceDiagram
+  autonumber
+  participant T as Точка трат (кассир / их ПО)
+  participant L as Сервер лояльности
+  actor C as Покупатель
+  T->>L: quote(карта, сумма чека)
+  L-->>T: можно списать не больше N баллов (скидка N ₽)
+  T->>L: hold(карта, сумма, баллы, idempotencyKey)
+  L-->>T: holdId, баллы зарезервированы 10 минут
+  T->>T: клиент платит с учётом скидки
+  alt оплата прошла
+    T->>L: commit(holdId)
+    L-->>C: «−50 баллов» в приложении
+  else отмена
+    T->>L: cancel(holdId), баллы свободны
+  end
+  Note over T,L: Если покупку вернули после списания, то reverse(holdId) возвращает баллы

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+    <entry key="bonus.service.name">Bonus accrual (Deya mall)</entry>
+    <entry key="plugin.name">Bonus accrual (Deya mall)</entry>
+
+    <entry key="enabled.description">Plugin enabled (clear to temporarily stop sending receipts)</entry>
+    <entry key="server.url.description">Loyalty server URL for accrual (full URL, e.g. https://loyalty.example.ru/api/v1/accruals)</entry>
+    <entry key="api.key.description">Loyalty server access key</entry>
+    <entry key="point.id.description">Point identifier on the loyalty server (default: hypermarket)</entry>
+    <entry key="card.prefix.description">App card number prefixes, comma separated (empty = any card except coupons and gift cards)</entry>
+    <entry key="connection.timeout.description">Server connection timeout, ms</entry>
+    <entry key="read.timeout.description">Server response timeout, ms</entry>
+    <entry key="send.refunds.description">Send refund receipts to the server (to cancel accrued bonuses)</entry>
+    <entry key="max.attempts.description">How many times to retry on server errors (connection failures are not counted)</entry>
+</properties>
