@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS points (          -- точки ТРЦ (гиперм�
   redeem_bp   INTEGER NOT NULL DEFAULT 0,    -- макс. доля чека, оплачиваемая баллами (1000 = 10%)
   active      INTEGER NOT NULL DEFAULT 1,
   api_key_hash TEXT,                         -- sha256 ключа доступа точки/плагина
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+  confirm_redeem INTEGER NOT NULL DEFAULT 0  -- 1 = списание подтверждается кодом из приложения клиента
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users (
@@ -16,13 +17,19 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT,
   consent_at TEXT,
   created_at TEXT NOT NULL,
-  deleted_at TEXT
+  deleted_at TEXT,
+  stub INTEGER NOT NULL DEFAULT 0,           -- 1 = «владелец» непривязанной пластиковой карты (без телефона)
+  auto_redeem INTEGER NOT NULL DEFAULT 0,    -- 1 = клиент разрешил списывать баллы на кассе гипермаркета
+  marketing_at TEXT                          -- согласие на рекламные рассылки (NULL = нет)
 );
 CREATE TABLE IF NOT EXISTS cards (
   number TEXT PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id),      -- NULL = карта выпущена, но ещё не привязана
-  status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL
+  user_id INTEGER REFERENCES users(id),      -- NULL = карта в пуле, ещё не выдана
+  status TEXT NOT NULL DEFAULT 'active',     -- free (в пуле) | active | blocked | closed
+  created_at TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'virtual',      -- virtual (QR в приложении) | physical (пластик)
+  activation_hash TEXT,                      -- HMAC кода активации пластиковой карты (если печатается на карте)
+  bound_at TEXT
 );
 CREATE INDEX IF NOT EXISTS cards_user ON cards(user_id);
 CREATE TABLE IF NOT EXISTS accounts (        -- кэш баланса; источник правды — ledger
@@ -54,7 +61,10 @@ CREATE TABLE IF NOT EXISTS holds (           -- резерв баллов под
   status TEXT NOT NULL CHECK (status IN ('HELD','COMMITTED','CANCELLED','EXPIRED','REVERSED')),
   idem_key TEXT UNIQUE,
   expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  ref TEXT,                                  -- ссылка на чек кассы (списание в гипермаркете через плагин)
+  confirm_code TEXT,                         -- код подтверждения списания (показывается клиенту в приложении)
+  confirm_attempts INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS otp (
   phone TEXT PRIMARY KEY, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL,
@@ -70,3 +80,13 @@ CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT NOT NULL, action TEXT NOT NULL,
   detail TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS consents (       -- журнал согласий (152-ФЗ, 38-ФЗ «О рекламе»): только добавление
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL,                        -- pd | rules | marketing
+  version TEXT NOT NULL,                     -- версия документа, с которой согласился клиент
+  granted INTEGER NOT NULL,                  -- 1 = дал, 0 = отозвал
+  ip TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS consents_user ON consents(user_id, id);

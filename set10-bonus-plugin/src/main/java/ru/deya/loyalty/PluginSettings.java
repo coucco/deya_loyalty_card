@@ -21,6 +21,11 @@ class PluginSettings {
     static final String KEY_READ_TIMEOUT = "read.timeout";
     static final String KEY_SEND_REFUNDS = "send.refunds";
     static final String KEY_MAX_ATTEMPTS = "max.attempts";
+    static final String KEY_REDEEM_ENABLED = "redeem.enabled";
+    static final String KEY_REDEEM_URL = "redeem.url";
+    static final String KEY_REDEEM_TIMEOUT = "redeem.timeout";
+    static final String KEY_REDEEM_DISCOUNT_TYPE = "redeem.discount.type";
+    static final String KEY_LOG_PAYLOAD = "log.payload";
 
     private final IntegrationProperties properties;
 
@@ -95,6 +100,50 @@ class PluginSettings {
     /** Сколько раз повторять отправку, если сервер отвечает ошибкой (сетевые сбои в счёт не идут). */
     int maxAttempts() {
         return clamp(reader().getInt(KEY_MAX_ATTEMPTS, 200), 1, 100000);
+    }
+
+    /**
+     * Списание баллов в чеке гипермаркета (скидкой на подытоге). По умолчанию выключено: сначала проверяем начисление.
+     * Лимит (% чека), исключения («цена 3») и согласие клиента решает сервер; плагин только применяет присланную скидку.
+     */
+    boolean redeemEnabled() {
+        return reader().getBoolean(KEY_REDEEM_ENABLED, false);
+    }
+
+    /**
+     * Базовый адрес списания: по умолчанию выводится из server.url (…/api/v1/accruals → …/api/v1/pos/redeem),
+     * запросы идут на {base}/reserve и {base}/cancel.
+     */
+    String redeemBaseUrl() {
+        String v = str(KEY_REDEEM_URL);
+        if (v != null) {
+            return v.endsWith("/") ? v.substring(0, v.length() - 1) : v;
+        }
+        String s = serverUrl();
+        if (s == null) {
+            return null;
+        }
+        int q = s.indexOf('?');
+        if (q >= 0) {
+            s = s.substring(0, q);
+        }
+        return s.endsWith("/accruals") ? s.substring(0, s.length() - "/accruals".length()) + "/pos/redeem" : null;
+    }
+
+    /** Таймаут ответа сервера на подытоге (кассир ждёт): короче, чем для фоновой отправки чеков. */
+    int redeemTimeoutMs() {
+        return clamp(reader().getInt(KEY_REDEEM_TIMEOUT, 1500), 200, 10000);
+    }
+
+    /** Тип скидки списания: SUM (обычная скидка, по умолчанию) или BONUSES (скидка бонусами, касса с API 0.0.60+). */
+    boolean redeemAsBonusesDiscount() {
+        String v = str(KEY_REDEEM_DISCOUNT_TYPE);
+        return v != null && v.equalsIgnoreCase("BONUSES");
+    }
+
+    /** Писать в лог кассы JSON запроса (для этапа тестирования; номер карты в нём не маскируется). */
+    boolean logPayload() {
+        return reader().getBoolean(KEY_LOG_PAYLOAD, false);
     }
 
     private static int clamp(int v, int min, int max) {

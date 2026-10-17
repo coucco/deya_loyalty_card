@@ -21,9 +21,31 @@ function drawKey() {
     } }, 'Войти')));
 }
 
-async function find(query) {
-  const body = /^\d{13}$/.test(query) ? { card: query } : { phone: query };
-  info = await post('/api/v1/cashier/lookup', body);
+/**
+ * Ввод с USB-сканера штрихкодов/QR или считывателя магнитной полосы (оба работают как клавиатура).
+ * Дорожка 2 приходит как ";2000123456789=…?", дорожка 1 как "%B2000…^…?": оставляем номер карты.
+ */
+export function normalizeCardInput(raw) {
+  const s = String(raw).trim();
+  const t2 = /^;([0-9A-Za-z]+)(=[^?]*)?\??$/.exec(s);
+  if (t2) return t2[1];
+  const t1 = /^%B?([0-9A-Za-z]+)\^/.exec(s);
+  if (t1) return t1[1];
+  return s;
+}
+
+async function find(rawQuery) {
+  const query = normalizeCardInput(rawQuery);
+  // номер карты (любой длины, как в Set10) или телефон: сначала ищем карту, потом телефон
+  const digits = query.replace(/\D/g, '');
+  const looksLikePhone = /^(\+?7|8)?9\d{9}$/.test(query.replace(/[\s()-]/g, ''));
+  let body = looksLikePhone ? { phone: query } : { card: query.trim() };
+  try { info = await post('/api/v1/cashier/lookup', body); }
+  catch (e) {
+    if (e.code !== 'unknown_card' || !(digits.length === 10 || digits.length === 11)) throw e;
+    body = body.card ? { phone: digits } : { card: digits };
+    info = await post('/api/v1/cashier/lookup', body);
+  }
   client = body; attemptKey = newKey();
   mode = info.kind === 'spend' ? 'redeem' : 'accrual';
 }
@@ -45,14 +67,14 @@ function drawFind(msg = '') {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       video.srcObject = stream; video.hidden = false; await video.play();
-      const det = new BarcodeDetector({ formats: ['qr_code'] });
+      const det = new BarcodeDetector({ formats: ['qr_code', 'code_128', 'ean_13'] });
       const loop = async () => { if (stop) return; try { const r = await det.detect(video); if (r[0]) return done(r[0].rawValue); } catch { /* кадр не готов */ } requestAnimationFrame(loop); };
       loop();
     } catch { err.textContent = 'Нет доступа к камере — введите номер'; }
   } }, 'Сканировать QR клиента');
   app.replaceChildren(header(), h('div', { class: 'content' },
     h('label', null, 'Клиент'), h('div', { class: 'field' }, q), err, video, scanBtn,
-    h('button', { class: 'btn', onclick: () => q.value.trim() && done(q.value.trim().replace(/[^\d]/g, '')) }, 'Найти клиента')));
+    h('button', { class: 'btn', onclick: () => q.value.trim() && done(q.value.trim()) }, 'Найти клиента')));
 }
 
 function drawOperation() {
@@ -88,6 +110,7 @@ function drawOperation() {
         finish(`Начислено ${fmt(r.accrued)} баллов`, `Баланс клиента: ${fmt(r.balance)}`);
       } else {
         const hold = await post('/api/v1/redeem/hold', { ...client, checkTotal: t, points: Number(points.value), idempotencyKey: attemptKey });
+        if (hold.confirmRequired) return drawConfirm(hold);
         const c = await post(`/api/v1/redeem/${hold.holdId}/commit`, {});
         finish(`Списано ${fmt(hold.points)} баллов`, `Скидка ${hold.discount} ₽. Баланс клиента: ${fmt(c.balance)}`);
       }
@@ -99,6 +122,24 @@ function drawOperation() {
     seg, h('label', null, 'Сумма чека, ₽'), h('div', { class: 'field' }, total),
     mode === 'redeem' ? [h('label', null, 'Списать баллов'), h('div', { class: 'field' }, points)] : '',
     preview, err, act, h('button', { class: 'btn ghost', onclick: () => { client = null; draw(); } }, 'Другой клиент')));
+}
+
+/** Подтверждение списания кодом: клиент видит код в своём приложении и называет его. */
+function drawConfirm(hold) {
+  const code = h('input', { type: 'text', inputmode: 'numeric', maxlength: 4, placeholder: '0000', style: 'border:0;outline:0;flex:1;font-size:28px;letter-spacing:8px;background:transparent;min-width:0' });
+  const err = h('div', { class: 'err' });
+  const ok = h('button', { class: 'btn green', onclick: async () => {
+    ok.disabled = true; err.textContent = '';
+    try {
+      const c = await post(`/api/v1/redeem/${hold.holdId}/commit`, { code: code.value.trim() });
+      finish(`Списано ${fmt(hold.points)} баллов`, `Скидка ${hold.discount} ₽. Баланс клиента: ${fmt(c.balance)}`);
+    } catch (e) { err.textContent = e.message; ok.disabled = false; if (e.code === 'confirm_failed') { client = null; setTimeout(draw, 2500); } }
+  } }, 'Подтвердить');
+  app.replaceChildren(header(info.pointName), h('div', { class: 'content' },
+    h('h2', null, 'Код от клиента'), h('p', { class: 'lead' }, `Клиент видит код в приложении ДЕЯ. Списание ${fmt(hold.points)} баллов (скидка ${hold.discount} ₽).`),
+    h('div', { class: 'field' }, code), err, ok,
+    h('button', { class: 'btn ghost', onclick: async () => { await post(`/api/v1/redeem/${hold.holdId}/cancel`, {}).catch(() => {}); client = null; draw(); } }, 'Отменить списание')));
+  code.focus();
 }
 
 function finish(title, sub) {

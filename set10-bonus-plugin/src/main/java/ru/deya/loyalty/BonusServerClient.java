@@ -36,23 +36,55 @@ class BonusServerClient {
         this.log = log;
     }
 
+    /** Ответ сервера: код и тело (обрезанное до разумного размера). */
+    static final class Response {
+        final int status;
+        final String body;
+
+        Response(int status, String body) {
+            this.status = status;
+            this.body = body;
+        }
+    }
+
     Outcome send(PluginSettings cfg, String idempotencyKey, String json) {
         String url = cfg.serverUrl();
         if (url == null) {
             log.warn("Не задан адрес сервера (server.url), чек {} не отправлен", idempotencyKey);
             return Outcome.RETRY_SERVER;
         }
+        try {
+            Response r = post(cfg, url, idempotencyKey, json, cfg.readTimeoutMs(), MAX_LOGGED_BODY);
+            return classify(r.status, idempotencyKey, r.body);
+        } catch (IOException e) {
+            log.warn("Нет связи с сервером лояльности ({}): {}", idempotencyKey, e.toString());
+            return Outcome.RETRY_NETWORK;
+        } catch (RuntimeException e) {
+            // например, некорректный URL в настройках
+            log.error("Ошибка отправки на сервер лояльности (" + idempotencyKey + "): проверьте настройки", e);
+            return Outcome.RETRY_SERVER;
+        }
+    }
+
+    /**
+     * POST JSON с ключом точки. Бросает IOException при отсутствии связи/таймауте.
+     *
+     * @param idempotencyKey может быть null (запросы списания идемпотентны по ref чека)
+     */
+    Response post(PluginSettings cfg, String url, String idempotencyKey, String json, int readTimeoutMs, int maxBody) throws IOException {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setConnectTimeout(cfg.connectionTimeoutMs());
-            conn.setReadTimeout(cfg.readTimeoutMs());
+            conn.setReadTimeout(readTimeoutMs);
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setInstanceFollowRedirects(false);
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("Idempotency-Key", idempotencyKey);
+            if (idempotencyKey != null) {
+                conn.setRequestProperty("Idempotency-Key", idempotencyKey);
+            }
             conn.setRequestProperty("X-Point-Id", cfg.pointId());
             conn.setRequestProperty("User-Agent", "deya-set10-bonus-plugin");
             String apiKey = cfg.apiKey();
@@ -65,15 +97,7 @@ class BonusServerClient {
                 out.write(body);
             }
             int status = conn.getResponseCode();
-            String answer = readSmall(status >= 400 ? conn.getErrorStream() : conn.getInputStream());
-            return classify(status, idempotencyKey, answer);
-        } catch (IOException e) {
-            log.warn("Нет связи с сервером лояльности ({}): {}", idempotencyKey, e.toString());
-            return Outcome.RETRY_NETWORK;
-        } catch (RuntimeException e) {
-            // например, некорректный URL в настройках
-            log.error("Ошибка отправки на сервер лояльности (" + idempotencyKey + "): проверьте настройки", e);
-            return Outcome.RETRY_SERVER;
+            return new Response(status, readSmall(status >= 400 ? conn.getErrorStream() : conn.getInputStream(), maxBody));
         } finally {
             if (conn != null) {
                 conn.disconnect();
@@ -101,7 +125,7 @@ class BonusServerClient {
         return classify(status, key, answer, log);
     }
 
-    private static String readSmall(InputStream in) {
+    private static String readSmall(InputStream in, int maxBody) {
         if (in == null) {
             return "";
         }
@@ -109,7 +133,7 @@ class BonusServerClient {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             byte[] chunk = new byte[256];
             int n;
-            while ((n = is.read(chunk)) > 0 && buf.size() < MAX_LOGGED_BODY) {
+            while ((n = is.read(chunk)) > 0 && buf.size() < maxBody) {
                 buf.write(chunk, 0, n);
             }
             return new String(buf.toByteArray(), StandardCharsets.UTF_8);

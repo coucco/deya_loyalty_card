@@ -3,6 +3,8 @@ package ru.deya.loyalty;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
+import ru.crystals.pos.api.ext.loyal.dto.Discount;
+import ru.crystals.pos.api.ext.loyal.dto.LoyaltyResult;
 import ru.crystals.pos.api.ext.loyal.dto.auxiliaries.LoyProviderFeedback;
 import ru.crystals.pos.spi.IntegrationProperties;
 import ru.crystals.pos.spi.PropertiesReader;
@@ -35,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Самопроверка плагина без внешних библиотек. Запуск: gradle selfTest (или gradle build).
@@ -47,7 +50,11 @@ public class SelfTest {
 
     public static void main(String[] args) throws Exception {
         if (System.getProperty("deya.live.url") != null) { // проверка настоящего плагина против настоящего сервера (см. deya-loyalty/e2e/plugin_live.py)
-            testLive();
+            if (System.getProperty("deya.live.redeem") != null) {
+                testLiveRedeem();
+            } else {
+                testLive();
+            }
             System.out.println("Проверок выполнено: " + checks + ", ошибок: " + failures.size());
             for (String f : failures) System.out.println("  ПРОВАЛ: " + f);
             System.exit(failures.isEmpty() ? 0 : 1);
@@ -59,6 +66,8 @@ public class SelfTest {
         testClientOutcomes();
         testPluginFlow();
         testBreaker();
+        testJsonParse();
+        testRedeem();
 
         System.out.println("Проверок выполнено: " + checks + ", ошибок: " + failures.size());
         for (String f : failures) {
@@ -181,7 +190,7 @@ public class SelfTest {
             BonusAccrualPlugin plugin = plugin(m);
             Receipt r = saleReceipt(card("2000000000017", CardType.INTERNAL), true);
 
-            check(plugin.doDiscount(r) != null, "doDiscount возвращает пустой результат (скидки считает Set10)");
+            check(plugin.doDiscount(r) != null && plugin.doDiscount(r).getDiscounts().isEmpty(), "doDiscount без списания: пустой результат (скидки считает Set10)");
 
             // 1. всё хорошо: ничего в очередь не ставим
             srv.status.set(200);
@@ -254,6 +263,102 @@ public class SelfTest {
         check(pl.eventReceiptFiscalized(saleReceipt(card("2000999999999", CardType.INTERNAL), true), null) == null, "LIVE: неизвестная карта (422) — отказ окончательный, очередь не нужна");
     }
 
+    static void testJsonParse() {
+        Object v = Json.parse(" {\"points\":50,\"discount\":\"50.00\",\"ok\":true,\"n\":null,\"lines\":[{\"number\":1,\"discount\":\"50.00\"}],\"s\":\"a\\\"b\\u0041\"} ");
+        Map<?, ?> m = (Map<?, ?>) v;
+        check(new BigDecimal("50").equals(m.get("points")), "JSON разбор: число");
+        check(Boolean.TRUE.equals(m.get("ok")) && m.containsKey("n") && m.get("n") == null, "JSON разбор: true/null");
+        check(((List<?>) m.get("lines")).size() == 1, "JSON разбор: массив объектов");
+        check("a\"bA".equals(m.get("s")), "JSON разбор: экранирование: " + m.get("s"));
+        boolean bad = false;
+        try {
+            Json.parse("{\"a\":1");
+        } catch (IllegalArgumentException e) {
+            bad = true;
+        }
+        check(bad, "JSON разбор: обрыв -> ошибка");
+    }
+
+    /** Списание баллов: подытог → скидка от сервера → фискализация с redemption → отмена расчёта. */
+    static void testRedeem() throws Exception {
+        TestServer srv = new TestServer();
+        try {
+            Map<String, String> m = new HashMap<>();
+            m.put(PluginSettings.KEY_SERVER_URL, srv.url());
+            m.put(PluginSettings.KEY_CONNECTION_TIMEOUT, "300");
+            check(("http://127.0.0.1:" + srv.server.getAddress().getPort() + "/api/v1/pos/redeem").equals(settings(m).redeemBaseUrl()),
+                    "адрес списания выводится из server.url: " + settings(m).redeemBaseUrl());
+            Receipt r = saleReceipt(card("2000000000017", CardType.INTERNAL), true);
+
+            // по умолчанию списание выключено: на подытоге запросов нет
+            int before = srv.requests.get();
+            check(plugin(m).doDiscount(r).getDiscounts().isEmpty() && srv.requests.get() == before, "redeem.enabled=false: подытог без запросов и скидок");
+
+            m.put(PluginSettings.KEY_REDEEM_ENABLED, "true");
+            BonusAccrualPlugin plugin = plugin(m);
+            srv.body.set("{\"holdId\":\"h_1\",\"points\":50,\"discount\":\"50.00\",\"lines\":[{\"number\":1,\"discount\":\"50.00\"}]}");
+            LoyaltyResult res = plugin.doDiscount(r);
+            check(srv.lastPath.endsWith("/api/v1/pos/redeem/reserve"), "подытог: запрос резерва: " + srv.lastPath);
+            check(srv.lastBody.contains("\"ref\":\"rc:9999078900001234:5:42:1760000000\"") && srv.lastBody.contains("\"payBonusAllowed\":true"),
+                    "резерв: ref чека и признаки позиций: " + srv.lastBody);
+            check(res.getDiscounts().size() == 1, "скидка списанием применена");
+            Discount d = res.getDiscounts().iterator().next();
+            check(d.getPosNo() == 1 && new BigDecimal("50.00").equals(d.getValue()) && RedeemOnReceipt.DISCOUNT_ID.equals(d.getDiscountId()), "скидка на позицию 1 = 50.00");
+            check("50".equals(res.getExtendedReceiptAttributesMap().get(RedeemOnReceipt.ATTR_POINTS)), "баллы списания сохранены в атрибутах чека");
+            check(!res.getMessagesToCashier().isEmpty(), "кассир видит сообщение о списании");
+
+            srv.body.set("{\"result\":\"ok\"}");
+            check(plugin.eventReceiptFiscalized(r, res) == null, "фискализация со списанием доставлена");
+            check(srv.lastBody.contains("\"redemption\":{\"ref\":\"rc:9999078900001234:5:42:1760000000\",\"points\":50}"), "в начислении передано списание: " + srv.lastBody);
+            check(srv.lastBody.contains("\"ownDiscount\":\"50.00\""), "скидка плагина отмечена в позиции");
+
+            // касса не передала наш результат при фискализации: берём запомненное на подытоге
+            srv.body.set("{\"points\":30,\"discount\":\"30.00\",\"lines\":[{\"number\":1,\"discount\":\"30.00\"}]}");
+            plugin.doDiscount(r);
+            srv.body.set("{}");
+            plugin.eventReceiptFiscalized(r, null);
+            check(srv.lastBody.contains("\"points\":30}"), "без LoyaltyResult: списание из памяти плагина");
+
+            // отмена расчёта снимает резерв
+            srv.body.set("{\"points\":10,\"discount\":\"10.00\",\"lines\":[{\"number\":1,\"discount\":\"10.00\"}]}");
+            LoyaltyResult res2 = plugin.doDiscount(r);
+            plugin.cancelDiscount(r, res2);
+            check(srv.lastPath.endsWith("/api/v1/pos/redeem/cancel") && srv.lastBody.contains("rc:9999078900001234"), "cancelDiscount: резерв снят");
+
+            // сервер отказал (клиент не включил списание) -> без скидки
+            srv.body.set("{\"points\":0,\"discount\":\"0.00\",\"lines\":[],\"reason\":\"not_opted_in\"}");
+            check(plugin.doDiscount(r).getDiscounts().isEmpty(), "0 баллов: чек без скидки");
+            srv.status.set(500);
+            check(plugin.doDiscount(r).getDiscounts().isEmpty(), "ошибка сервера: чек без скидки");
+            srv.status.set(200);
+            check(plugin.doDiscount(saleReceipt(null, true)).getDiscounts().isEmpty(), "без карты: без скидки");
+        } finally {
+            srv.stop();
+        }
+        Map<String, String> dead = new HashMap<>();
+        dead.put(PluginSettings.KEY_SERVER_URL, "http://127.0.0.1:" + freePort() + "/api/v1/accruals");
+        dead.put(PluginSettings.KEY_CONNECTION_TIMEOUT, "300");
+        dead.put(PluginSettings.KEY_REDEEM_ENABLED, "true");
+        long t0 = System.currentTimeMillis();
+        check(plugin(dead).doDiscount(saleReceipt(card("2000000000017", CardType.INTERNAL), true)).getDiscounts().isEmpty(), "сервер недоступен: чек без скидки");
+        check(System.currentTimeMillis() - t0 < 3000, "сервер недоступен: подытог не зависает");
+    }
+
+    /** Списание через настоящий сервер: подытог (резерв и скидка) → фискализация (подтверждение списания и начисление). */
+    static void testLiveRedeem() {
+        Map<String, String> cfg = new HashMap<>();
+        cfg.put(PluginSettings.KEY_SERVER_URL, System.getProperty("deya.live.url"));
+        cfg.put(PluginSettings.KEY_API_KEY, System.getProperty("deya.live.key"));
+        cfg.put(PluginSettings.KEY_REDEEM_ENABLED, "true");
+        BonusAccrualPlugin pl = plugin(cfg);
+        Receipt sale = saleReceipt(card(System.getProperty("deya.live.card"), CardType.INTERNAL), true, 50, 900L);
+        LoyaltyResult res = pl.doDiscount(sale);
+        String expected = System.getProperty("deya.live.expectPoints");
+        check(expected.equals(res.getExtendedReceiptAttributesMap().get(RedeemOnReceipt.ATTR_POINTS)), "LIVE: на подытоге сервер разрешил списать " + expected + ": " + res);
+        check(res.getDiscounts().size() == 1, "LIVE: скидка списанием на позиции");
+        check(pl.eventReceiptFiscalized(sale, res) == null, "LIVE: чек со списанием доставлен");
+    }
+
     static void testBreaker() {
         final long[] now = {0};
         FailureBreaker b = new FailureBreaker(3, 1000, () -> now[0]);
@@ -309,9 +414,13 @@ public class SelfTest {
 
     /** Чек продажи. withNewApi=false имитирует старую кассу, где новых методов нет. */
     static Receipt saleReceipt(Card card, boolean withNewApi) {
+        return saleReceipt(card, withNewApi, 42, 777L);
+    }
+
+    static Receipt saleReceipt(Card card, boolean withNewApi, int number, long fiscalDocId) {
         Map<String, Object> m = new HashMap<>();
         m.put("getType", ReceiptType.SALE);
-        m.put("getNumber", 42);
+        m.put("getNumber", number);
         m.put("getShiftNo", 5);
         m.put("getDateCreate", new Date(1760000000000L));
         m.put("getSumWithDiscount", new BigDecimal("1234.5"));
@@ -322,7 +431,7 @@ public class SelfTest {
             shift.put("getFnNumber", "9999078900001234");
             shift.put("getFiscalFactoryNumber", "0012345678");
             m.put("getShift", fake(Shift.class, shift));
-            m.put("getFiscalDocId", 777L);
+            m.put("getFiscalDocId", fiscalDocId);
             m.put("getFiscalSign", 123456789L);
             m.put("getFiscalizationTimestamp", new Date(1760000100000L));
             Map<String, Object> pay = new HashMap<>();
@@ -363,6 +472,7 @@ public class SelfTest {
         l.put("getDiscountValue", new BigDecimal("0"));
         l.put("getMerchandise", fake(Merchandise.class, g));
         l.put("isAccrueBonusAllowed", Boolean.TRUE);
+        l.put("isPayBonusAllowed", Boolean.TRUE);
         return fake(LineItem.class, l);
     }
 
@@ -448,6 +558,8 @@ public class SelfTest {
         final AtomicInteger requests = new AtomicInteger();
         volatile Map<String, String> lastHeaders = new HashMap<>();
         volatile String lastBody;
+        volatile String lastPath = "";
+        final AtomicReference<String> body = new AtomicReference<>("{\"result\":\"ok\"}");
         final List<String> bodies = new CopyOnWriteArrayList<>();
 
         TestServer() throws IOException {
@@ -466,6 +578,7 @@ public class SelfTest {
 
         private void handle(HttpExchange ex) throws IOException {
             requests.incrementAndGet();
+            lastPath = ex.getRequestURI().getPath();
             Map<String, String> h = new HashMap<>();
             for (Map.Entry<String, List<String>> e : ex.getRequestHeaders().entrySet()) {
                 h.put(e.getKey(), e.getValue().get(0));
@@ -481,7 +594,7 @@ public class SelfTest {
             }
             lastBody = new String(buf.toByteArray(), StandardCharsets.UTF_8);
             bodies.add(lastBody);
-            byte[] resp = "{\"result\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+            byte[] resp = body.get().getBytes(StandardCharsets.UTF_8);
             ex.sendResponseHeaders(status.get(), resp.length);
             try (OutputStream out = ex.getResponseBody()) {
                 out.write(resp);

@@ -1,0 +1,9 @@
+node_modules/
+server/data/
+*.db
+*.db-wal
+*.db-shm
+.env
+set10-bonus-plugin/build/
+set10-bonus-plugin/.gradle/
+__pycache__/

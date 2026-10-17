@@ -38,6 +38,20 @@ try:
     exp_ok = ('ACCRUAL', 8) in types and ('ACCRUAL_REVERSAL', -5) in types and me['balance'] == 3 and len(hist) == 2
     print('сервер записал ровно одну продажу (дубль не задвоил) и один возврат:', 'ДА' if exp_ok else 'НЕТ')
     ok = ok and exp_ok
+    # списание в чеке: клиент включил «списывать баллы в гипермаркете», лимит 5% чека.
+    # чек 150.00: 5% = 7 баллов, но на счёте 3 -> списать 3 (скидка 3.00). Поддельный чек не уменьшает сумму позиции
+    # (это делает настоящая касса), поэтому начисление здесь от 150.00 = 8; на кассе будет от 147.00 = 7
+    req('PATCH', '/api/me', {'autoRedeem': True}, token=tok)
+    req('PATCH', '/api/admin/points/hypermarket', {'redeemPct': 5}, token=ADMIN)
+    out = subprocess.run(['java', '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', f'-Ddeya.live.url={BASE}/api/v1/accruals', f'-Ddeya.live.key={key}', f'-Ddeya.live.card={card}',
+        '-Ddeya.live.redeem=1', '-Ddeya.live.expectPoints=3', '-cp', ':'.join(cp), 'ru.deya.loyalty.SelfTest'], capture_output=True, text=True)
+    print(out.stdout.strip(), out.stderr.strip()[-500:])
+    me = req('GET', '/api/me', token=tok)
+    types = [(h['type'], h['points']) for h in req('GET', '/api/me/history', token=tok)['items']][:2]
+    print('списание в чеке:', types, '| баланс:', me['balance'], '| резерв:', me['balance'] - me['available'])
+    red_ok = out.returncode == 0 and ('REDEEM', -3) in types and ('ACCRUAL', 8) in types and me['balance'] == 8 and me['available'] == 8
+    print('списано 3, начислено 8, резерв снят:', 'ДА' if red_ok else 'НЕТ')
+    ok = ok and red_ok
 finally:
     srv.send_signal(signal.SIGTERM)
     try: srv.wait(5)
