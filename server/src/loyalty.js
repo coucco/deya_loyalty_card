@@ -116,16 +116,20 @@ export function importCards(db, cfg, kind, items) {
   if (!['virtual', 'physical'].includes(kind)) throw new HttpError(400, 'bad_kind', 'kind: virtual | physical');
   if (!Array.isArray(items) || !items.length) throw new HttpError(400, 'no_cards', 'Нет номеров карт');
   if (items.length > 100000) throw new HttpError(400, 'too_many', 'Не больше 100 000 карт за раз');
-  const res = { added: 0, skipped: 0, invalid: [] };
+  // conflicts: номер уже загружен с другим типом (виртуальные и пластиковые диапазоны не должны пересекаться)
+  const res = { added: 0, skipped: 0, invalid: [], conflicts: [], withoutCode: 0 };
   tx(db, () => {
     const t = nowIso();
     for (const it of items) {
       const number = String(it.number ?? '').trim();
       if (!CARD_RE.test(number)) { if (res.invalid.length < 20) res.invalid.push(number); continue; }
       const code = it.code == null || it.code === '' ? null : String(it.code).trim();
-      const r = run(db, "INSERT OR IGNORE INTO cards(number,user_id,status,kind,activation_hash,created_at) VALUES(?,NULL,'free',?,?,?)",
+      const ex = one(db, 'SELECT kind FROM cards WHERE number=?', number);
+      if (ex) { if (ex.kind !== kind) res.conflicts.push(number); else res.skipped++; continue; }
+      run(db, "INSERT INTO cards(number,user_id,status,kind,activation_hash,created_at) VALUES(?,NULL,'free',?,?,?)",
         number, kind, code ? activationHash(cfg, number, code) : null, t);
-      if (r.changes) res.added++; else res.skipped++;
+      res.added++;
+      if (kind === 'physical' && !code) res.withoutCode++;
     }
   });
   return res;
@@ -140,6 +144,29 @@ export function expandRange(from, to) {
   const out = [];
   for (let n = a; n <= b; n++) out.push({ number: n.toString().padStart(from.length, '0') });
   return out;
+}
+
+/** Блокировка карты администратором (утеря, мошенничество). Баллы остаются на счёте клиента. */
+export function setCardBlocked(db, number, blocked) {
+  const c = findCard(db, number);
+  if (!c) throw new HttpError(404, 'card_not_found', 'Карта не найдена');
+  if (blocked && c.status !== 'active') throw new HttpError(409, 'bad_status', 'Заблокировать можно только выданную карту');
+  if (!blocked && c.status !== 'blocked') throw new HttpError(409, 'bad_status', 'Карта не заблокирована');
+  if (!blocked && c.kind === 'physical' && c.user_id && one(db, "SELECT 1 FROM cards WHERE user_id=? AND kind='physical' AND status='active'", c.user_id)) {
+    throw new HttpError(409, 'physical_exists', 'У клиента уже есть другая активная пластиковая карта');
+  }
+  run(db, 'UPDATE cards SET status=? WHERE number=?', blocked ? 'blocked' : 'active', c.number);
+  return { card: c.number, status: blocked ? 'blocked' : 'active' };
+}
+
+/**
+ * Удаление аккаунта: виртуальная карта закрывается навсегда; пластиковая возвращается в «свободные» —
+ * пластик у человека на руках, при следующей покупке на ней начнёт копиться новый гостевой счёт.
+ */
+export function releaseCardsOnDelete(db, userId) {
+  run(db, "UPDATE cards SET status='closed' WHERE user_id=? AND kind='virtual'", userId);
+  run(db, "UPDATE cards SET status='free', user_id=NULL, bound_at=NULL WHERE user_id=? AND kind='physical' AND status='active'", userId);
+  run(db, "UPDATE cards SET status='closed' WHERE user_id=? AND kind='physical'", userId);   // заблокированные ранее
 }
 
 export function poolStats(db) {
@@ -177,14 +204,18 @@ export function accrualOwner(db, number) {
 /**
  * Привязка пластиковой карты к клиенту (в приложении: номер с карты + код активации, если он печатается).
  * Баллы, накопленные на карте до привязки, переносятся на счёт клиента.
+ * Правило: у телефона не больше одной виртуальной и одной пластиковой карты, порядок появления любой.
+ * Вторую пластиковую можно привязать только заменой (replace=true): старая блокируется (утеря, новая карта).
  */
-export function bindPhysicalCard(db, cfg, userId, number, code) {
+export function bindPhysicalCard(db, cfg, userId, number, code, replace = false) {
   number = String(number ?? '').replace(/\s/g, '');
   return tx(db, () => {
     const c = findCard(db, number);
     if (!c || c.kind !== 'physical' || !['free', 'active'].includes(c.status)) throw new HttpError(404, 'card_not_found', 'Карта не найдена. Проверьте номер');
     if (c.activation_hash && !(code && tsEqHex(activationHash(cfg, number, code), c.activation_hash))) throw new HttpError(400, 'wrong_code', 'Неверный код активации');
     if (c.user_id === userId) return { card: number, transferred: 0 };
+    const mine = one(db, "SELECT number FROM cards WHERE user_id=? AND kind='physical' AND status='active' AND number<>?", userId, number);
+    if (mine && !replace) throw new HttpError(409, 'physical_exists', `У вас уже есть пластиковая карта ****${mine.number.slice(-4)}. Заменить её новой?`);
     let transferred = 0;
     if (c.user_id) {
       const owner = one(db, 'SELECT * FROM users WHERE id=?', c.user_id);
@@ -192,15 +223,16 @@ export function bindPhysicalCard(db, cfg, userId, number, code) {
       const acc = one(db, 'SELECT balance, held FROM accounts WHERE user_id=?', owner.id);
       transferred = acc.balance - acc.held;
       if (transferred > 0) {
-        insertLedger(db, { userId: owner.id, pointId: 'admin', type: 'ADJUST', points: -transferred, idemKey: 'bind-out:' + number, meta: { reason: 'card_bind_transfer', card: number, to: userId } });
-        insertLedger(db, { userId, pointId: 'admin', type: 'ADJUST', points: transferred, idemKey: 'bind-in:' + number, meta: { reason: 'card_bind_transfer', card: number, from: owner.id } });
+        insertLedger(db, { userId: owner.id, pointId: 'admin', type: 'ADJUST', points: -transferred, idemKey: `bind-out:${number}:${owner.id}`, meta: { reason: 'card_bind_transfer', card: number, to: userId } });
+        insertLedger(db, { userId, pointId: 'admin', type: 'ADJUST', points: transferred, idemKey: `bind-in:${number}:${owner.id}`, meta: { reason: 'card_bind_transfer', card: number, from: owner.id } });
         run(db, 'UPDATE accounts SET balance=balance-? WHERE user_id=?', transferred, owner.id);
         run(db, 'UPDATE accounts SET balance=balance+? WHERE user_id=?', transferred, userId);
       }
       run(db, 'UPDATE users SET deleted_at=? WHERE id=?', nowIso(), owner.id);
     }
+    if (mine) run(db, "UPDATE cards SET status='blocked' WHERE number=?", mine.number);
     run(db, "UPDATE cards SET user_id=?, status='active', bound_at=? WHERE number=?", userId, nowIso(), number);
-    return { card: number, transferred };
+    return { card: number, transferred, replaced: mine ? mine.number : null };
   });
 }
 const tsEqHex = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));

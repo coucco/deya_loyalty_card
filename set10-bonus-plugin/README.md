@@ -102,8 +102,8 @@ docs/metainf.xsd                  схема манифеста из SDK
 
 Нужны JDK 8 или новее и Gradle (интернет не требуется: единственная зависимость лежит в `libs/`).
 
-1. Откройте `gradle.properties` и впишите **реальные контакты поставщика** (`vendorEmail` или `vendorPhone`):
-   они обязательны в манифесте jar. В готовом `dist/*.jar` стоит заглушка `CHANGE_ME@example.com`.
+1. Контакты поставщика (`vendorEmail`/`vendorPhone` в `gradle.properties`) обязательны в манифесте jar: по ним
+   поддержка Crystals связывается с автором плагина. Вписан e-mail разработчика; готовый jar и инструкция — `dist/` (`dist/INSTALL.md`).
 2. `gradle build`: компилирует под Java 8, запускает самопроверку, собирает `build/libs/DeyaBonusAccrualPlugin.jar`.
 3. Только проверки: `gradle selfTest`.
 

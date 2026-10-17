@@ -29,8 +29,15 @@ function poolSection(pool) {
   const from = h('input', { type: 'text', placeholder: 'диапазон: с', style: 'width:160px' }), to = h('input', { type: 'text', placeholder: 'по', style: 'width:160px' });
   const out = h('div');
   const send = async (body) => {
-    try { const r = await call('POST', '/api/admin/cards/import', { kind: kind.value, ...body }); out.textContent = `Добавлено: ${r.added}, уже были: ${r.skipped}` + (r.invalid.length ? `, неверные: ${r.invalid.join(', ')}` : ''); setTimeout(load, 1500); }
+    try { const r = await call('POST', '/api/admin/cards/import', { kind: kind.value, ...body }); out.textContent = `Добавлено: ${r.added}, уже были: ${r.skipped}` + (r.invalid.length ? `, неверные: ${r.invalid.join(', ')}` : '')
+      + (r.conflicts.length ? `. ОШИБКА: уже загружены с другим типом (диапазоны виртуальных и пластиковых не должны пересекаться): ${r.conflicts.slice(0, 10).join(', ')}` : '')
+      + (r.withoutCode ? `. Внимание: ${r.withoutCode} пластиковых без кода активации — их сможет привязать любой, кто знает номер` : ''); setTimeout(load, 1500); }
     catch (e) { out.textContent = e.message; }
+  };
+  const blk = h('input', { type: 'text', placeholder: 'номер карты (утеря)', style: 'width:200px' }), bout = h('div');
+  const block = async (on) => {
+    try { const r = await call('POST', `/api/admin/cards/${encodeURIComponent(blk.value.trim())}/block`, { blocked: on, reason: on ? prompt('Причина?') || '' : '' }); bout.textContent = `Карта ${r.card}: ${r.status === 'blocked' ? 'заблокирована' : 'активна'}`; }
+    catch (e) { bout.textContent = e.message; }
   };
   const free = pool.pool.find((p) => p.kind === 'virtual' && p.status === 'free')?.n || 0;
   return h('section', null, h('h3', null, 'Пул карт Set10'),
@@ -39,7 +46,9 @@ function poolSection(pool) {
     h('table', null, h('tr', null, ['Тип', 'Статус', 'Карт'].map((x) => h('th', null, x))),
       pool.pool.map((p) => h('tr', null, h('td', null, POOL_NAMES[p.kind] || p.kind), h('td', null, STATUS_NAMES[p.status] || p.status), h('td', null, fmt(p.n))))),
     h('p', { style: 'margin-top:10px' }, kind), h('p', null, text), h('p', null, h('button', { class: 'sbtn o', onclick: () => send({ text: text.value }) }, 'Загрузить список')),
-    h('p', null, from, ' ', to, ' ', h('button', { class: 'sbtn', onclick: () => send({ range: { from: from.value.trim(), to: to.value.trim() } }) }, 'Загрузить диапазон')), out);
+    h('p', null, from, ' ', to, ' ', h('button', { class: 'sbtn', onclick: () => send({ range: { from: from.value.trim(), to: to.value.trim() } }) }, 'Загрузить диапазон')), out,
+    h('p', { style: 'margin-top:14px' }, blk, ' ', h('button', { class: 'sbtn', onclick: () => block(true) }, 'Заблокировать карту'), ' ',
+      h('button', { class: 'sbtn', onclick: () => block(false) }, 'Разблокировать')), bout);
 }
 function metricsSection(mx) {
   const t = mx.totals;

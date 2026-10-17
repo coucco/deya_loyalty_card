@@ -69,11 +69,13 @@ export function buildApp(cfg, { log = console, sms } = {}) {
   router.add('GET', '/api/me', ({ req, ip }) => {
     apiLimit('m:' + ip);
     const u = userAuth(req);
-    const card = L.ensureCard(db, cfg, u.id);   // null: пул карт пуст, карта появится, когда админ загрузит номера
+    const virtual = L.ensureCard(db, cfg, u.id);   // null: пул карт пуст, карта появится, когда админ загрузит номера
     const physical = all(db, "SELECT number FROM cards WHERE user_id=? AND status='active' AND kind='physical'", u.id).map((c) => c.number);
+    // в QR — виртуальная карта; если её ещё нет, а пластик привязан — номер пластика (обе карты заведены в Set10)
+    const card = virtual || (physical.length ? { number: physical[0] } : null);
     const acc = L.getAccount(db, u.id);
     const last = L.history(db, u.id, { limit: 1 })[0] || null;
-    return { user: { name: u.name, phone: maskPhone(u.phone) }, card: card ? { number: card.number } : null, physicalCards: physical,
+    return { user: { name: u.name, phone: maskPhone(u.phone) }, card: card ? { number: card.number, kind: virtual ? 'virtual' : 'physical' } : null, physicalCards: physical,
       qr: card ? { mode: 'static', value: qrPayload(card) } : null,
       settings: { autoRedeem: !!u.auto_redeem, marketing: !!u.marketing_at },
       pending: L.pendingConfirmations(db, u.id).map((h) => ({ id: h.id, pointName: h.point_name, points: h.points, code: h.code, expiresAt: h.expires_at })),
@@ -93,8 +95,8 @@ export function buildApp(cfg, { log = console, sms } = {}) {
   router.add('POST', '/api/me/cards/bind', ({ req, body }) => {   // привязка пластиковой карты
     const u = userAuth(req);
     bindLimit('b:' + u.id);
-    const r = L.bindPhysicalCard(db, cfg, u.id, body.number, body.code);
-    audit(db, 'user:' + u.id, 'card_bound', { card: r.card.slice(-4), transferred: r.transferred });
+    const r = L.bindPhysicalCard(db, cfg, u.id, body.number, body.code, body.replace === true);
+    audit(db, 'user:' + u.id, 'card_bound', { card: r.card.slice(-4), transferred: r.transferred, replaced: r.replaced ? r.replaced.slice(-4) : null });
     return r;
   });
   router.add('DELETE', '/api/me', ({ req }) => {   // удаление аккаунта: персональные данные стираются, журнал баллов остаётся обезличенным
@@ -102,7 +104,7 @@ export function buildApp(cfg, { log = console, sms } = {}) {
     db.exec('BEGIN IMMEDIATE');
     try {
       run(db, 'UPDATE users SET phone=NULL, name=NULL, deleted_at=? WHERE id=?', nowIso(), u.id);
-      run(db, "UPDATE cards SET status='closed' WHERE user_id=?", u.id);
+      L.releaseCardsOnDelete(db, u.id);
       run(db, 'DELETE FROM sessions WHERE user_id=?', u.id);
       audit(db, 'user:' + u.id, 'account_deleted');
       db.exec('COMMIT');
@@ -236,6 +238,12 @@ export function buildApp(cfg, { log = console, sms } = {}) {
     else if (typeof body.text === 'string') items = body.text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => { const [number, code] = l.split(/[;,\t ]+/); return { number, code }; });
     const r = L.importCards(db, cfg, body.kind || 'virtual', items);
     audit(db, 'admin', 'cards_imported', { kind: body.kind || 'virtual', added: r.added, skipped: r.skipped, invalid: r.invalid.length });
+    return r;
+  });
+  router.add('POST', '/api/admin/cards/:number/block', ({ req, params, body }) => {
+    adminAuth(req);
+    const r = L.setCardBlocked(db, params.number, body.blocked !== false);
+    audit(db, 'admin', r.status === 'blocked' ? 'card_blocked' : 'card_unblocked', { card: r.card, reason: String(body.reason || '').slice(0, 200) });
     return r;
   });
   router.add('GET', '/api/admin/metrics', ({ req, query }) => { adminAuth(req); return metrics(db, query.days); });

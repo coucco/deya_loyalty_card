@@ -296,18 +296,26 @@ function switchRow(title, sub, on, save) {
   box.addEventListener('change', async () => { try { await save(box.checked); toast('Сохранено'); } catch (e) { box.checked = !box.checked; toast(e.message); } });
   return h('label', { class: 'row-set' }, h('span', null, title, h('small', null, sub)), box);
 }
-function bindSheet() {
+function bindSheet(current) {
   const num = h('input', { type: 'text', inputmode: 'numeric', placeholder: 'Номер с лицевой стороны', autocomplete: 'off' });
   const code = h('input', { type: 'text', inputmode: 'numeric', placeholder: 'Код активации (на обороте)', autocomplete: 'off', maxlength: 12 });
   const err = h('div', { class: 'err' });
   const m = h('div', { class: 'modal', onclick: (e) => { if (e.target === m) m.remove(); } }, h('div', { class: 'sheet' },
-    h('h2', null, 'Привязать карту'),
-    h('p', null, 'Введите номер пластиковой карты ДЕЯ и код активации. Баллы, накопленные на карте, перейдут на ваш счёт.'),
+    h('h2', null, current ? 'Заменить пластиковую карту' : 'Привязать карту'),
+    h('p', null, current ? `Сейчас привязана карта ****${current.slice(-4)}. После привязки новой старая будет заблокирована, баллы останутся на вашем счёте.`
+      : 'Введите номер пластиковой карты ДЕЯ и код активации. Баллы, накопленные на карте, перейдут на ваш счёт.'),
     h('div', { class: 'field', style: 'margin-bottom:8px' }, num), h('div', { class: 'field' }, code), err,
     h('button', { class: 'btn', onclick: async () => {
       err.textContent = '';
+      const body = { number: num.value.replace(/\s/g, ''), code: code.value.trim(), replace: !!current };
       try {
-        const r = await api('POST', '/api/me/cards/bind', { token: state.token, body: { number: num.value.replace(/\s/g, ''), code: code.value.trim() } });
+        let r;
+        try { r = await api('POST', '/api/me/cards/bind', { token: state.token, body }); }
+        catch (e) {
+          // у клиента уже есть пластик: одна пластиковая карта на телефон, вторая — только заменой
+          if (e.code !== 'physical_exists' || !confirm(e.message + ' Старая карта будет заблокирована.')) throw e;
+          r = await api('POST', '/api/me/cards/bind', { token: state.token, body: { ...body, replace: true } });
+        }
         m.remove(); toast(r.transferred ? `Карта привязана, перенесено ${fmt(r.transferred)} баллов` : 'Карта привязана'); render();
       } catch (e) { err.textContent = e.message; }
     } }, 'Привязать'),
@@ -331,9 +339,11 @@ async function viewProfile() {
     h('div', { class: 'avatar' }, initial),
     h('div', { style: 'text-align:center;color:var(--muted);font-size:13px;margin-bottom:14px' }, me.user.phone),
     h('div', { class: 'row-set static' }, h('span', { style: 'flex:1' }, h('small', null, 'Имя'), nameInput)),
-    h('div', { class: 'row-set static' }, h('span', null, 'Номер карты', h('small', null, me.card ? me.card.number : 'выпускается…'))),
+    h('div', { class: 'row-set static' }, h('span', null, 'Карта в приложении', h('small', null, me.card && me.card.kind === 'virtual' ? me.card.number : 'выпускается…'))),
     me.physicalCards.map((n) => h('div', { class: 'row-set static' }, h('span', null, 'Пластиковая карта', h('small', null, n)))),
-    h('button', { class: 'row-set', onclick: () => bindSheet() }, h('span', null, 'Привязать пластиковую карту', h('small', null, 'баллы с карты перейдут на ваш счёт')), h('span', null, '›')),
+    h('button', { class: 'row-set', onclick: () => bindSheet(me.physicalCards[0]) }, me.physicalCards.length
+      ? h('span', null, 'Заменить пластиковую карту', h('small', null, 'если карта утеряна или выдана новая'))
+      : h('span', null, 'Привязать пластиковую карту', h('small', null, 'баллы с карты перейдут на ваш счёт')), h('span', null, '›')),
     switchRow('Списывать баллы в гипермаркете', hyper && hyper.redeemPct > 0 ? `до ${pctText(hyper.redeemPct)} чека, автоматически на кассе` : 'когда списание заработает, оно будет автоматическим',
       me.settings.autoRedeem, (v) => api('PATCH', '/api/me', { token: state.token, body: { autoRedeem: v } })),
     switchRow('Персональные предложения', 'рекламные рассылки, можно отключить в любой момент',
