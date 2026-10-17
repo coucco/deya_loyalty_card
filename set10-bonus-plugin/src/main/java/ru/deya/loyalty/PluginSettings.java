@@ -26,6 +26,11 @@ class PluginSettings {
     static final String KEY_REDEEM_TIMEOUT = "redeem.timeout";
     static final String KEY_REDEEM_DISCOUNT_TYPE = "redeem.discount.type";
     static final String KEY_LOG_PAYLOAD = "log.payload";
+    static final String KEY_REDEEM_MODE = "redeem.mode";
+    static final String KEY_CARD_MODE = "card.mode";
+    static final String KEY_CARD_ACTIVATION = "card.activation";
+    static final String KEY_CARD_PHONE_SEARCH = "card.phone.search";
+    static final String KEY_CARD_CATEGORY = "card.category.guid";
 
     private final IntegrationProperties properties;
 
@@ -119,6 +124,12 @@ class PluginSettings {
         if (v != null) {
             return v.endsWith("/") ? v.substring(0, v.length() - 1) : v;
         }
+        String api = apiBase();
+        return api == null ? null : api + "/pos/redeem";
+    }
+
+    /** Базовый адрес API сервера: server.url без «/accruals» (…/api/v1). */
+    String apiBase() {
         String s = serverUrl();
         if (s == null) {
             return null;
@@ -127,7 +138,53 @@ class PluginSettings {
         if (q >= 0) {
             s = s.substring(0, q);
         }
-        return s.endsWith("/accruals") ? s.substring(0, s.length() - "/accruals".length()) + "/pos/redeem" : null;
+        return s.endsWith("/accruals") ? s.substring(0, s.length() - "/accruals".length()) : null;
+    }
+
+    /**
+     * Как списываются баллы на кассе: auto — сами по согласию клиента в приложении; cashier — по кнопке кассира
+     * «оплатить бонусами» (нужен плагин карт в режиме external, чтобы касса видела баланс); both — оба способа.
+     */
+    String redeemMode() {
+        String v = str(KEY_REDEEM_MODE);
+        return v == null ? "both" : v.trim().toLowerCase();
+    }
+
+    boolean redeemAuto() {
+        return !"cashier".equals(redeemMode());
+    }
+
+    boolean redeemCashier() {
+        return !"auto".equals(redeemMode());
+    }
+
+    /**
+     * Режим плагина карт: internal — карты остаются картами Set10 («цена 3» по типу карты работает штатно), плагин только
+     * активирует пластик, ищет по телефону и показывает баланс; external — плагин признаёт карты своими и отдаёт кассе
+     * баланс (кнопка «оплатить бонусами»), «цену 3» тогда нужно проверить отдельно (см. TEST_PLAN, этап 2b).
+     */
+    boolean cardExternal() {
+        String v = str(KEY_CARD_MODE);
+        return v != null && v.trim().equalsIgnoreCase("external");
+    }
+
+    /** Предлагать кассиру активацию неактивированной пластиковой карты (телефон + код из СМС). */
+    boolean cardActivation() {
+        return reader().getBoolean(KEY_CARD_ACTIVATION, true);
+    }
+
+    /** Категория карт ДЕЯ для акций Set10 в режиме external (если «цену 3» придётся привязать к категории внешних карт). */
+    Long cardCategoryGuid() {
+        String v = str(KEY_CARD_CATEGORY);
+        try {
+            return v == null ? null : Long.valueOf(v.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    boolean cardPhoneSearch() {
+        return reader().getBoolean(KEY_CARD_PHONE_SEARCH, true);
     }
 
     /** Таймаут ответа сервера на подытоге (кассир ждёт): короче, чем для фоновой отправки чеков. */

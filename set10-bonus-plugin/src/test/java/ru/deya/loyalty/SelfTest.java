@@ -8,6 +8,20 @@ import ru.crystals.pos.api.ext.loyal.dto.LoyaltyResult;
 import ru.crystals.pos.api.ext.loyal.dto.auxiliaries.LoyProviderFeedback;
 import ru.crystals.pos.spi.IntegrationProperties;
 import ru.crystals.pos.spi.PropertiesReader;
+import ru.crystals.pos.api.plugin.card.BonusOperationStatus;
+import ru.crystals.pos.api.plugin.card.BonusWriteOffOperationResponse;
+import ru.crystals.pos.api.plugin.card.CardInfo;
+import ru.crystals.pos.api.plugin.card.CardSearchResponse;
+import ru.crystals.pos.api.plugin.card.CardSearchResponseStatus;
+import ru.crystals.pos.api.ui.listener.ConfirmListener;
+import ru.crystals.pos.api.ui.listener.DialogListener;
+import ru.crystals.pos.api.ui.listener.InputListener;
+import ru.crystals.pos.spi.plugin.card.CardSearchEventSource;
+import ru.crystals.pos.spi.plugin.card.CardSearchFinishedCallback;
+import ru.crystals.pos.spi.plugin.card.CardSearchFinishedRequest;
+import ru.crystals.pos.spi.plugin.card.CardSearchRequest;
+import ru.crystals.pos.spi.ui.UIForms;
+import ru.crystals.pos.spi.ui.input.UIInputForms;
 import ru.crystals.pos.spi.receipt.Card;
 import ru.crystals.pos.spi.receipt.CardType;
 import ru.crystals.pos.spi.receipt.LineItem;
@@ -50,7 +64,9 @@ public class SelfTest {
 
     public static void main(String[] args) throws Exception {
         if (System.getProperty("deya.live.url") != null) { // проверка настоящего плагина против настоящего сервера (см. deya-loyalty/e2e/plugin_live.py)
-            if (System.getProperty("deya.live.redeem") != null) {
+            if (System.getProperty("deya.live.cardplugin") != null) {
+                testLiveCardPlugin();
+            } else if (System.getProperty("deya.live.redeem") != null) {
                 testLiveRedeem();
             } else {
                 testLive();
@@ -68,6 +84,8 @@ public class SelfTest {
         testBreaker();
         testJsonParse();
         testRedeem();
+        testRedeemByCashier();
+        testCardPlugin();
 
         System.out.println("Проверок выполнено: " + checks + ", ошибок: " + failures.size());
         for (String f : failures) {
@@ -299,7 +317,7 @@ public class SelfTest {
             srv.body.set("{\"holdId\":\"h_1\",\"points\":50,\"discount\":\"50.00\",\"lines\":[{\"number\":1,\"discount\":\"50.00\"}]}");
             LoyaltyResult res = plugin.doDiscount(r);
             check(srv.lastPath.endsWith("/api/v1/pos/redeem/reserve"), "подытог: запрос резерва: " + srv.lastPath);
-            check(srv.lastBody.contains("\"ref\":\"rc:9999078900001234:5:42:1760000000\"") && srv.lastBody.contains("\"payBonusAllowed\":true"),
+            check(srv.lastBody.contains("\"ref\":\"ref:9999078900001234:5:1760000000000\"") && srv.lastBody.contains("\"payBonusAllowed\":true"),
                     "резерв: ref чека и признаки позиций: " + srv.lastBody);
             check(res.getDiscounts().size() == 1, "скидка списанием применена");
             Discount d = res.getDiscounts().iterator().next();
@@ -309,7 +327,7 @@ public class SelfTest {
 
             srv.body.set("{\"result\":\"ok\"}");
             check(plugin.eventReceiptFiscalized(r, res) == null, "фискализация со списанием доставлена");
-            check(srv.lastBody.contains("\"redemption\":{\"ref\":\"rc:9999078900001234:5:42:1760000000\",\"points\":50}"), "в начислении передано списание: " + srv.lastBody);
+            check(srv.lastBody.contains("\"redemption\":{\"ref\":\"ref:9999078900001234:5:1760000000000\",\"points\":50}"), "в начислении передано списание: " + srv.lastBody);
             check(srv.lastBody.contains("\"ownDiscount\":\"50.00\""), "скидка плагина отмечена в позиции");
 
             // касса не передала наш результат при фискализации: берём запомненное на подытоге
@@ -323,7 +341,7 @@ public class SelfTest {
             srv.body.set("{\"points\":10,\"discount\":\"10.00\",\"lines\":[{\"number\":1,\"discount\":\"10.00\"}]}");
             LoyaltyResult res2 = plugin.doDiscount(r);
             plugin.cancelDiscount(r, res2);
-            check(srv.lastPath.endsWith("/api/v1/pos/redeem/cancel") && srv.lastBody.contains("rc:9999078900001234"), "cancelDiscount: резерв снят");
+            check(srv.lastPath.endsWith("/api/v1/pos/redeem/cancel") && srv.lastBody.contains("ref:9999078900001234"), "cancelDiscount: резерв снят");
 
             // сервер отказал (клиент не включил списание) -> без скидки
             srv.body.set("{\"points\":0,\"discount\":\"0.00\",\"lines\":[],\"reason\":\"not_opted_in\"}");
@@ -357,6 +375,266 @@ public class SelfTest {
         check(expected.equals(res.getExtendedReceiptAttributesMap().get(RedeemOnReceipt.ATTR_POINTS)), "LIVE: на подытоге сервер разрешил списать " + expected + ": " + res);
         check(res.getDiscounts().size() == 1, "LIVE: скидка списанием на позиции");
         check(pl.eventReceiptFiscalized(sale, res) == null, "LIVE: чек со списанием доставлен");
+    }
+
+    /** Кнопка «оплатить бонусами»: 1-й расчёт — потолок (writeOffsLimits), 2-й — сумма кассира становится скидкой BONUSES. */
+    static void testRedeemByCashier() throws Exception {
+        TestServer srv = new TestServer();
+        try {
+            Map<String, String> m = new HashMap<>();
+            m.put(PluginSettings.KEY_SERVER_URL, srv.url());
+            m.put(PluginSettings.KEY_REDEEM_ENABLED, "true");
+            m.put(PluginSettings.KEY_REDEEM_MODE, "cashier");
+            BonusAccrualPlugin plugin = plugin(m);
+            srv.byPath.put("/pos/redeem/quote", "{\"maxPoints\":50,\"balance\":200}");
+            srv.byPath.put("/pos/redeem/reserve", "{\"holdId\":\"h_9\",\"points\":30,\"discount\":\"30.00\",\"lines\":[{\"number\":1,\"discount\":\"30.00\"}]}");
+            Receipt first = saleReceipt(bonusCard("2000000000017", null), true);
+            LoyaltyResult r1 = plugin.doDiscount(first);
+            check(srv.paths.get(srv.paths.size() - 1).endsWith("/pos/redeem/quote") && !srv.paths.toString().contains("/reserve"), "режим cashier: на 1-м расчёте только потолок, без резерва: " + srv.paths);
+            check(r1.getDiscounts().isEmpty(), "1-й расчёт: скидки нет");
+            check(r1.getWriteOffsLimits().containsKey("2000000000017") && new BigDecimal("50").equals(r1.getBonusWriteOffsLimits().get("2000000000017")),
+                    "1-й расчёт: потолок 50 для карты: " + r1);
+            Receipt second = saleReceipt(bonusCard("2000000000017", new BigDecimal("30")), true);
+            LoyaltyResult r2 = plugin.doDiscount(second);
+            check(srv.lastBody.contains("\"mode\":\"cashier\"") && srv.lastBody.contains("\"points\":30"), "2-й расчёт: резерв суммы кассира: " + srv.lastBody);
+            check(r2.getDiscounts().size() == 1 && r2.getDiscounts().iterator().next().getDiscountType() == ru.crystals.pos.api.ext.loyal.dto.DiscountType.BONUSES,
+                    "2-й расчёт: скидка типа BONUSES");
+            check(new BigDecimal("30").equals(r2.getBonusesTakenIntoAccount().get("2000000000017")), "2-й расчёт: учтённые бонусы = сумме кассира");
+        } finally {
+            srv.stop();
+        }
+    }
+
+    static Card bonusCard(String number, BigDecimal toChargeOff) {
+        Map<String, Object> b = new HashMap<>();
+        b.put("getBalance", new BigDecimal("200"));
+        b.put("getSumToChargeOff", toChargeOff);
+        Map<String, Object> m = new HashMap<>();
+        m.put("getId", number);
+        m.put("getCardNumber", number);
+        m.put("getCardType", CardType.EXTERNAL);
+        m.put("getBonusBalance", fake(ru.crystals.pos.spi.receipt.BonusBalance.class, b));
+        return fake(Card.class, m);
+    }
+
+    /** Плагин карт: поиск, телефон, активация с формами кассы, инфо, списание/откат, разбор магнитной полосы. */
+    static void testCardPlugin() throws Exception {
+        check("2000123456789".equals(DeyaCardPlugin.trackNumber(";2000123456789=0000?")), "полоса: дорожка 2");
+        check("2000123456789".equals(DeyaCardPlugin.trackNumber("%B2000123456789^IVANOV/I^?")), "полоса: дорожка 1");
+        check("2000123456789".equals(DeyaCardPlugin.trackNumber("2000123456789")), "номер без служебных символов");
+        TestServer srv = new TestServer();
+        try {
+            Map<String, String> m = new HashMap<>();
+            m.put(PluginSettings.KEY_SERVER_URL, srv.url());
+            m.put(PluginSettings.KEY_CARD_PREFIX, "999");
+            String bound = "{\"known\":true,\"card\":\"999000000000001\",\"kind\":\"virtual\",\"state\":\"bound\",\"profileId\":\"1000007\",\"name\":\"Анна\",\"phone\":\"+7 920 ***-**-10\",\"balance\":120,\"available\":100}";
+            srv.byPath.put("/pos/card/status", bound);
+
+            // internal (по умолчанию): карту ищет Set10, плагин в поиск не вмешивается
+            int before = srv.requests.get();
+            check(cardPlugin(m, null).searchCard(searchReq("999000000000001", CardSearchEventSource.BARCODE)).getResponseStatus() == CardSearchResponseStatus.UNKNOWN_CARD
+                    && srv.requests.get() == before, "internal: поиск карты отдаётся Set10, запросов нет");
+
+            Map<String, String> ext = new HashMap<>(m);
+            ext.put(PluginSettings.KEY_CARD_MODE, "external");
+            CardSearchResponse found = cardPlugin(ext, null).searchCard(searchReq("999000000000001", CardSearchEventSource.BARCODE));
+            check(found.getResponseStatus() == CardSearchResponseStatus.OK && new BigDecimal("100").equals(found.getCard().getBonusBalance().getBalance())
+                    && "1000007".equals(found.getCard().getCardHolder().getId()), "external: карта наша, баланс (доступно) и ID профиля: " + found.getCard());
+            check(cardPlugin(ext, null).searchCard(searchReq("4600000000001", CardSearchEventSource.BARCODE)).getResponseStatus() == CardSearchResponseStatus.UNKNOWN_CARD,
+                    "external: чужая карта не наша");
+            CardSearchResponse msr = cardPlugin(ext, null).searchCard(msrReq(";999000000000001=1?"));
+            check(msr.getResponseStatus() == CardSearchResponseStatus.OK && srv.lastBody.contains("\"card\":\"999000000000001\""), "external: номер взят с магнитной полосы");
+
+            // поиск по телефону (асинхронно)
+            srv.byPath.put("/pos/card/by-phone", bound);
+            final AtomicReference<CardSearchResponse> byPhone = new AtomicReference<>();
+            final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            cardPlugin(m, null).searchCardAsync(searchReq("+79200000010", CardSearchEventSource.PHONE_NUMBER), res -> {
+                byPhone.set(res);
+                latch.countDown();
+            });
+            latch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            check(byPhone.get() != null && byPhone.get().getResponseStatus() == CardSearchResponseStatus.OK
+                    && "999000000000001".equals(byPhone.get().getCard().getCardNumber()), "поиск по телефону: карта найдена");
+
+            // активация: касса нашла неактивированный пластик → диалог → телефон → код → сообщение → callback ровно один раз
+            srv.byPath.put("/pos/card/status", "{\"known\":true,\"card\":\"999000000000008\",\"kind\":\"physical\",\"state\":\"guest\",\"balance\":50}");
+            srv.byPath.put("/pos/activate/start", "{\"sent\":true,\"existingProfile\":false}");
+            srv.byPath.put("/pos/activate/confirm", "{\"profileId\":\"1000009\",\"balance\":50}");
+            List<String> shown = new CopyOnWriteArrayList<>();
+            AtomicInteger callbacks = new AtomicInteger();
+            DeyaCardPlugin cp = cardPlugin(m, scriptedUi(shown, "9200000012", "4321"));
+            cp.cardSearchFinished(finishedReq(card("999000000000008", CardType.INTERNAL), callbacks));
+            check(callbacks.get() == 1, "активация: касса продолжила работу (callback 1 раз): " + callbacks.get());
+            check(srv.paths.toString().contains("/pos/activate/start") && srv.paths.toString().contains("/pos/activate/confirm"), "активация: запросы на сервер: " + srv.paths);
+            check(srv.lastBody.contains("\"code\":\"4321\"") && srv.lastBody.contains("\"phone\":\"9200000012\""), "активация: телефон и код переданы");
+            check(shown.size() == 4 && shown.get(3).contains("1000009"), "активация: диалог → телефон → код → «Карта активирована, профиль»: " + shown);
+
+            // активированная карта — без диалога
+            srv.byPath.put("/pos/card/status", bound);
+            shown.clear();
+            callbacks.set(0);
+            cardPlugin(m, scriptedUi(shown, "x", "y")).cardSearchFinished(finishedReq(card("999000000000001", CardType.INTERNAL), callbacks));
+            check(callbacks.get() == 1 && shown.isEmpty(), "активированная карта: без диалога");
+
+            // сервер недоступен — касса не ждёт и не падает
+            Map<String, String> dead = new HashMap<>(m);
+            dead.put(PluginSettings.KEY_SERVER_URL, "http://127.0.0.1:" + freePort() + "/api/v1/accruals");
+            dead.put(PluginSettings.KEY_CONNECTION_TIMEOUT, "300");
+            callbacks.set(0);
+            cardPlugin(dead, scriptedUi(shown, "x", "y")).cardSearchFinished(finishedReq(card("999000000000008", CardType.INTERNAL), callbacks));
+            check(callbacks.get() == 1, "нет связи: активация не предлагается, касса продолжает");
+
+            // инфо по карте
+            CardInfo info = cardPlugin(m, null).getCardInfo(searchReq("999000000000001", CardSearchEventSource.NUMBER));
+            check(info.getCardSearchStatus() == CardSearchResponseStatus.OK && "1000007".equals(info.getInfo().get("Профиль")) && "120".equals(info.getInfo().get("Баланс, баллов")),
+                    "инфо по карте: профиль и баланс: " + info.getInfo());
+
+            // списание кнопкой и откат
+            srv.byPath.put("/pos/redeem/writeoff", "{\"txId\":\"h_5\",\"points\":30,\"balance\":70}");
+            BonusWriteOffOperationResponse w = cardPlugin(m, null).writeOff(card("999000000000001", CardType.EXTERNAL), new BigDecimal("30"), saleReceipt(null, true));
+            check(w.getResponseStatus() == BonusOperationStatus.OK && "h_5".equals(w.getTxId()) && srv.lastBody.contains("\"ref\":\"ref:"), "writeOff: списано, txId, ref чека");
+            srv.byPath.put("/pos/redeem/rollback", "{\"status\":\"REVERSED\"}");
+            check(cardPlugin(m, null).rollback("h_5").getResponseStatus() == BonusOperationStatus.OK, "rollback: откат списания");
+            srv.status.set(409);
+            check(cardPlugin(m, null).writeOff(card("999000000000001", CardType.EXTERNAL), new BigDecimal("30"), saleReceipt(null, true)).getResponseStatus() == BonusOperationStatus.ERROR,
+                    "writeOff: отказ сервера → ERROR с сообщением кассиру");
+        } finally {
+            srv.stop();
+        }
+    }
+
+    static DeyaCardPlugin cardPlugin(Map<String, String> values, UIForms ui) {
+        DeyaCardPlugin p = new DeyaCardPlugin();
+        p.log = new Logger() { };
+        p.properties = properties(values);
+        p.ui = ui;
+        return p;
+    }
+
+    static CardSearchRequest searchReq(String s, CardSearchEventSource src) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("getSearchString", s);
+        m.put("getEventSource", src);
+        m.put("getAdditionalData", Collections.emptyList());
+        return fake(CardSearchRequest.class, m);
+    }
+
+    static CardSearchRequest msrReq(String track2) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("getSearchString", track2);
+        m.put("getEventSource", CardSearchEventSource.MAGNETIC_STRIPE);
+        m.put("getAdditionalData", Arrays.asList(null, track2, null, null));
+        return fake(CardSearchRequest.class, m);
+    }
+
+    static CardSearchFinishedRequest finishedReq(Card found, AtomicInteger callbacks) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("getFoundCard", Optional.ofNullable(found));
+        m.put("getCallback", (CardSearchFinishedCallback) res -> callbacks.incrementAndGet());
+        return fake(CardSearchFinishedRequest.class, m);
+    }
+
+    /** Формы кассы, которые сразу «нажимают» первую кнопку и вводят заданные значения по очереди. */
+    static UIForms scriptedUi(List<String> shown, String... inputs) {
+        final AtomicInteger next = new AtomicInteger();
+        UIInputForms input = fake(UIInputForms.class, null, (name, a) -> {
+            if (name.equals("showInputNumberForm")) {
+                shown.add("input:" + a[0]);
+                ((InputListener) a[4]).eventInputComplete(inputs[next.getAndIncrement()]);
+                return null;
+            }
+            return NO_VALUE;
+        });
+        return fake(UIForms.class, map("getInputForms", input), (name, a) -> {
+            switch (name) {
+                case "showDialogForm":
+                    shown.add("dialog");
+                    ((DialogListener) a[1]).eventButton1pressed();
+                    return null;
+                case "showMessageForm":
+                    shown.add("message:" + a[0]);
+                    ((ConfirmListener) a[1]).eventConfirmed();
+                    return null;
+                case "showErrorForm":
+                    shown.add("error:" + a[0]);
+                    ((ConfirmListener) a[1]).eventConfirmed();
+                    return null;
+                default:
+                    return NO_VALUE;
+            }
+        });
+    }
+
+    /**
+     * Плагин карт против настоящего сервера: активация пластика формами кассы (код читается из СМС-лога сервера),
+     * затем «оплатить бонусами» кнопкой кассира: потолок → сумма кассира → writeOff → фискализация.
+     */
+    static void testLiveCardPlugin() throws Exception {
+        Map<String, String> cfg = new HashMap<>();
+        cfg.put(PluginSettings.KEY_SERVER_URL, System.getProperty("deya.live.url"));
+        cfg.put(PluginSettings.KEY_API_KEY, System.getProperty("deya.live.key"));
+        cfg.put(PluginSettings.KEY_REDEEM_ENABLED, "true");
+        cfg.put(PluginSettings.KEY_REDEEM_MODE, "cashier");
+        cfg.put(PluginSettings.KEY_CARD_MODE, "external");
+        String plastic = System.getProperty("deya.live.plastic");
+        final java.nio.file.Path smsLog = java.nio.file.Paths.get(System.getProperty("deya.live.smslog"));
+        List<String> shown = new CopyOnWriteArrayList<>();
+        UIInputForms input = fake(UIInputForms.class, null, (name, a) -> {
+            if (!name.equals("showInputNumberForm")) {
+                return NO_VALUE;
+            }
+            shown.add("input:" + a[0]);
+            String value = "9200000077";
+            if (String.valueOf(a[0]).contains("Код")) {
+                try {
+                    String logText = new String(java.nio.file.Files.readAllBytes(smsLog), StandardCharsets.UTF_8);
+                    java.util.regex.Matcher mm = java.util.regex.Pattern.compile("Код (\\d{4}) для активации").matcher(logText);
+                    value = null;
+                    while (mm.find()) {
+                        value = mm.group(1);
+                    }
+                } catch (IOException e) {
+                    value = "0000";
+                }
+            }
+            ((InputListener) a[4]).eventInputComplete(value);
+            return null;
+        });
+        UIForms ui = fake(UIForms.class, map("getInputForms", input), (name, a) -> {
+            if (name.equals("showDialogForm")) {
+                shown.add("dialog");
+                ((DialogListener) a[1]).eventButton1pressed();
+                return null;
+            }
+            if (name.equals("showMessageForm") || name.equals("showErrorForm")) {
+                shown.add(name + ":" + a[0]);
+                ((ConfirmListener) a[1]).eventConfirmed();
+                return null;
+            }
+            return NO_VALUE;
+        });
+        DeyaCardPlugin cp = cardPlugin(cfg, ui);
+        AtomicInteger callbacks = new AtomicInteger();
+        cp.cardSearchFinished(finishedReq(card(plastic, CardType.INTERNAL), callbacks));
+        check(callbacks.get() == 1 && shown.toString().contains("Карта активирована"), "LIVE: пластик активирован на кассе формами: " + shown);
+
+        CardSearchResponse found = cp.searchCard(searchReq(plastic, CardSearchEventSource.BARCODE));
+        check(found.getResponseStatus() == CardSearchResponseStatus.OK && found.getCard().getBonusBalance() != null, "LIVE: external — карта с балансом: " + found.getCard());
+        BigDecimal balance = found.getCard().getBonusBalance().getBalance();
+        check(balance.intValue() == 100, "LIVE: на балансе гостевые баллы карты (100): " + balance);
+
+        BonusAccrualPlugin lp = plugin(cfg);
+        Card first = bonusCard(plastic, null);
+        Receipt r1 = saleReceipt(first, true, 60, 960L);
+        LoyaltyResult limits = lp.doDiscount(r1);
+        check(new BigDecimal("7").equals(limits.getBonusWriteOffsLimits().get(plastic)), "LIVE: потолок 5% от 150 = 7: " + limits.getBonusWriteOffsLimits());
+        Receipt r2 = saleReceipt(bonusCard(plastic, new BigDecimal("5")), true, 60, 960L);
+        LoyaltyResult res = lp.doDiscount(r2);
+        check(res.getDiscounts().size() == 1, "LIVE: скидка 5 баллов применена");
+        BonusWriteOffOperationResponse w = cp.writeOff(bonusCard(plastic, new BigDecimal("5")), new BigDecimal("5"), r2);
+        check(w.getResponseStatus() == BonusOperationStatus.OK, "LIVE: writeOff списал баллы: " + w);
+        check(lp.eventReceiptFiscalized(r2, res) == null, "LIVE: чек со списанием кнопкой доставлен");
     }
 
     static void testBreaker() {
@@ -422,7 +700,8 @@ public class SelfTest {
         m.put("getType", ReceiptType.SALE);
         m.put("getNumber", number);
         m.put("getShiftNo", 5);
-        m.put("getDateCreate", new Date(1760000000000L));
+        // время создания различается у разных чеков (как на кассе), поэтому различается и ref
+        m.put("getDateCreate", new Date(1760000000000L + (fiscalDocId == 777L ? 0L : fiscalDocId * 1000L)));
         m.put("getSumWithDiscount", new BigDecimal("1234.5"));
         m.put("getCards", card == null ? Collections.<Card>emptyList() : Collections.singletonList(card));
         m.put("getLineItems", Collections.singletonList(lineItem()));
@@ -560,6 +839,9 @@ public class SelfTest {
         volatile String lastBody;
         volatile String lastPath = "";
         final AtomicReference<String> body = new AtomicReference<>("{\"result\":\"ok\"}");
+        /** Ответы по окончанию пути (например "/pos/card/status"); иначе body. */
+        final Map<String, String> byPath = new java.util.concurrent.ConcurrentHashMap<>();
+        final List<String> paths = new CopyOnWriteArrayList<>();
         final List<String> bodies = new CopyOnWriteArrayList<>();
 
         TestServer() throws IOException {
@@ -579,6 +861,7 @@ public class SelfTest {
         private void handle(HttpExchange ex) throws IOException {
             requests.incrementAndGet();
             lastPath = ex.getRequestURI().getPath();
+            paths.add(lastPath);
             Map<String, String> h = new HashMap<>();
             for (Map.Entry<String, List<String>> e : ex.getRequestHeaders().entrySet()) {
                 h.put(e.getKey(), e.getValue().get(0));
@@ -594,7 +877,13 @@ public class SelfTest {
             }
             lastBody = new String(buf.toByteArray(), StandardCharsets.UTF_8);
             bodies.add(lastBody);
-            byte[] resp = body.get().getBytes(StandardCharsets.UTF_8);
+            String answer = body.get();
+            for (Map.Entry<String, String> e : byPath.entrySet()) {
+                if (lastPath.endsWith(e.getKey())) {
+                    answer = e.getValue();
+                }
+            }
+            byte[] resp = answer.getBytes(StandardCharsets.UTF_8);
             ex.sendResponseHeaders(status.get(), resp.length);
             try (OutputStream out = ex.getResponseBody()) {
                 out.write(resp);

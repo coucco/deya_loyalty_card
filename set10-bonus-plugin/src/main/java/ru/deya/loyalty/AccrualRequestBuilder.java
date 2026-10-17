@@ -300,13 +300,14 @@ final class AccrualRequestBuilder {
     // ------------------------------------------------------------------ идентификаторы
 
     /**
-     * Ссылка на чек, известная уже на подытоге (до фискализации): касса + смена + номер чека + время создания.
-     * По ней сервер связывает резерв баллов (doDiscount) с пробитым чеком.
+     * Ссылка на чек, известная уже на подытоге (до фискализации): касса + смена + время создания чека (мс).
+     * Номер чека сюда НЕ входит: по документации Crystals номер на расчёте скидок может отличаться от номера
+     * при фискализации (если между ними печатались X-отчёт, копия чека и т.п.).
+     * По ref сервер связывает резерв/списание баллов (doDiscount, writeOff) с пробитым чеком.
      */
     static String receiptRef(Receipt r, String registerId) {
         Date created = r.getDateCreate();
-        long epochSec = created == null ? 0L : created.getTime() / 1000L;
-        return "rc:" + registerId + ":" + r.getShiftNo() + ":" + r.getNumber() + ":" + epochSec;
+        return "ref:" + registerId + ":" + r.getShiftNo() + ":" + (created == null ? 0L : created.getTime());
     }
 
     static String receiptRef(Receipt r) {
@@ -344,7 +345,9 @@ final class AccrualRequestBuilder {
         if (fd != null && notBlank(fn)) {
             return "fd:" + sanitize(fn) + ":" + fd;
         }
-        return receiptRef(r, registerId);
+        Date created = r.getDateCreate();
+        long epochSec = created == null ? 0L : created.getTime() / 1000L;
+        return "rc:" + registerId + ":" + r.getShiftNo() + ":" + r.getNumber() + ":" + epochSec;
     }
 
     // ------------------------------------------------------------------ форматирование

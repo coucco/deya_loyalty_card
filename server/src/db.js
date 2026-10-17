@@ -16,7 +16,8 @@ export function openDb(file) {
 
 /** Колонки, добавленные после первой версии схемы: в старых БД их создаём через ALTER TABLE. */
 const ADDED_COLUMNS = {
-  users: ['stub INTEGER NOT NULL DEFAULT 0', 'auto_redeem INTEGER NOT NULL DEFAULT 0', 'marketing_at TEXT'],
+  users: ['stub INTEGER NOT NULL DEFAULT 0', 'auto_redeem INTEGER NOT NULL DEFAULT 0', 'marketing_at TEXT', 'merged_into INTEGER'],
+  consents: ['channel TEXT'],   // app | pos_sms | support
   cards: ["kind TEXT NOT NULL DEFAULT 'virtual'", 'activation_hash TEXT', 'bound_at TEXT'],
   points: ['confirm_redeem INTEGER NOT NULL DEFAULT 0'],
   holds: ['ref TEXT', 'confirm_code TEXT', 'confirm_attempts INTEGER NOT NULL DEFAULT 0'],

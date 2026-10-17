@@ -84,17 +84,17 @@ function serveStatic(publicDir, pathname, res) {
   return true;
 }
 
-export function createServer({ router, publicDir, log, clientIp }) {
+export function createServer({ router, publicDir, log, clientIp, onApiDone }) {
   return http.createServer(async (req, res) => {
     const started = Date.now();
     const url = new URL(req.url, 'http://x');
-    let status = 500;
+    let status = 500, errCode = null, ctx = null;
     try {
       if (url.pathname.startsWith('/api/') || url.pathname === '/healthz') {
         const m = router.match(req.method, url.pathname);
         if (!m.handler) throw m.pathMatched ? new HttpError(405, 'method_not_allowed', 'Метод не поддерживается') : new HttpError(404, 'not_found', 'Не найдено');
         const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readJson(req) : {};
-        const ctx = { req, res, url, query: Object.fromEntries(url.searchParams), params: m.params, body, ip: clientIp(req) };
+        ctx = { req, res, url, query: Object.fromEntries(url.searchParams), params: m.params, body, ip: clientIp(req) };
         const out = await m.handler(ctx);
         if (out && out.raw) { res.writeHead(200, { ...out.headers, ...SEC_HEADERS }); res.end(out.raw); status = 200; }
         else if (out && out.http) { status = out.http; sendJson(res, status, out.body); }
@@ -104,10 +104,14 @@ export function createServer({ router, publicDir, log, clientIp }) {
         if (!serveStatic(publicDir, url.pathname, res)) { status = 404; sendJson(res, 404, { error: 'not_found' }); }
       } else { status = 405; sendJson(res, 405, { error: 'method_not_allowed' }); }
     } catch (e) {
+      errCode = e.code || 'internal';
       if (e instanceof HttpError) { status = e.status; if (!res.headersSent) sendJson(res, status, { error: e.code, message: e.message }); }
       else { log.error(`[${req.method} ${url.pathname}]`, e); status = 500; if (!res.headersSent) sendJson(res, 500, { error: 'internal', message: 'Внутренняя ошибка' }); }
     } finally {
-      if (url.pathname !== '/healthz') log.log(JSON.stringify({ t: new Date().toISOString(), m: req.method, p: url.pathname, s: status, ms: Date.now() - started }));
+      if (url.pathname !== '/healthz') log.log(JSON.stringify({ t: new Date().toISOString(), m: req.method, p: url.pathname, s: status, ms: Date.now() - started, a: req.actor || undefined }));
+      if (onApiDone && url.pathname.startsWith('/api/')) {
+        try { onApiDone({ req, method: req.method, path: url.pathname, status, ms: Date.now() - started, ip: ctx?.ip, err: errCode }); } catch (e) { log.error('audit', e); }
+      }
     }
   });
 }

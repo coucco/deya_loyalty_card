@@ -37,9 +37,9 @@ export function normalizeConsents(body) {
 }
 
 /** Запись в журнал согласий (только добавление) и отметка в профиле. */
-export function recordConsent(db, cfg, userId, kind, granted, ip) {
+export function recordConsent(db, cfg, userId, kind, granted, ip, channel = 'app') {
   const t = nowIso();
-  run(db, 'INSERT INTO consents(user_id,kind,version,granted,ip,created_at) VALUES(?,?,?,?,?,?)', userId, kind, cfg.docsVersion, granted ? 1 : 0, ip ?? null, t);
+  run(db, 'INSERT INTO consents(user_id,kind,version,granted,ip,created_at,channel) VALUES(?,?,?,?,?,?,?)', userId, kind, cfg.docsVersion, granted ? 1 : 0, ip ?? null, t, channel);
   if (kind === 'marketing') run(db, 'UPDATE users SET marketing_at=? WHERE id=?', granted ? t : null, userId);
 }
 

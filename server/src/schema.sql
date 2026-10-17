@@ -90,3 +90,8 @@ CREATE TABLE IF NOT EXISTS consents (       -- журнал согласий (15
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS consents_user ON consents(user_id, id);
+CREATE TABLE IF NOT EXISTS verifications (  -- коды подтверждения операций: смена номера, активация пластика на кассе
+  purpose TEXT NOT NULL, subject TEXT NOT NULL, phone TEXT NOT NULL, code_hash TEXT NOT NULL,
+  expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, sent_at INTEGER NOT NULL,
+  PRIMARY KEY (purpose, subject)
+);

@@ -52,6 +52,8 @@ export const pctToBp = (pct) => {
 };
 
 /* ---------------- пользователи и карты ---------------- */
+/** Неизменный ID профиля для клиента, кассы и поддержки (телефон и карты могут меняться). */
+export const profileId = (userId) => String(1000000 + Number(userId));
 export function generateCardNumber(prefix, length) {
   const bodyLen = length - 1 - prefix.length;
   if (bodyLen < 4) throw new Error('CARD_LENGTH слишком мал для префикса');
@@ -207,12 +209,12 @@ export function accrualOwner(db, number) {
  * Правило: у телефона не больше одной виртуальной и одной пластиковой карты, порядок появления любой.
  * Вторую пластиковую можно привязать только заменой (replace=true): старая блокируется (утеря, новая карта).
  */
-export function bindPhysicalCard(db, cfg, userId, number, code, replace = false) {
+export function bindPhysicalCard(db, cfg, userId, number, code, replace = false, { skipCode = false } = {}) {
   number = String(number ?? '').replace(/\s/g, '');
   return tx(db, () => {
     const c = findCard(db, number);
     if (!c || c.kind !== 'physical' || !['free', 'active'].includes(c.status)) throw new HttpError(404, 'card_not_found', 'Карта не найдена. Проверьте номер');
-    if (c.activation_hash && !(code && tsEqHex(activationHash(cfg, number, code), c.activation_hash))) throw new HttpError(400, 'wrong_code', 'Неверный код активации');
+    if (!skipCode && c.activation_hash && !(code && tsEqHex(activationHash(cfg, number, code), c.activation_hash))) throw new HttpError(400, 'wrong_code', 'Неверный код активации');
     if (c.user_id === userId) return { card: number, transferred: 0 };
     const mine = one(db, "SELECT number FROM cards WHERE user_id=? AND kind='physical' AND status='active' AND number<>?", userId, number);
     if (mine && !replace) throw new HttpError(409, 'physical_exists', `У вас уже есть пластиковая карта ****${mine.number.slice(-4)}. Заменить её новой?`);
@@ -308,7 +310,7 @@ export function processReceipt(db, point, payload) {
       if (!redeemed && payload.receipt?.ref) releaseReceiptHold(db, point, String(payload.receipt.ref)); // скидки в чеке не было: резерв не нужен
       const points = calcPoints(baseKop, point.accrual_bp, settings);
       insertLedger(db, { userId: user.id, pointId: point.id, type: 'ACCRUAL', points, baseKop, pctBp: point.accrual_bp, receiptKey, idemKey: key,
-        meta: { total: payload.receipt?.total ?? null, registerId: payload.registerId ?? null } });
+        meta: { total: payload.receipt?.total ?? null, registerId: payload.registerId ?? null, ref: payload.redemption?.ref ?? payload.receipt?.ref ?? null } });
       run(db, 'UPDATE accounts SET balance=balance+? WHERE user_id=?', points, user.id);
       return { duplicate: false, accrued: points, redeemed, balance: getAccount(db, user.id).balance };
     }
@@ -362,7 +364,30 @@ export function spreadDiscount(lines, discountKop) {
   return { lines: out.filter((x) => x.kop > 0), unplaced: left };
 }
 
-export function reservePos(db, cfg, point, { ref, card, lines }) {
+/**
+ * Потолок списания по чеку без резерва (режим «кассир»: касса показывает его, кассир вводит сумму по просьбе клиента).
+ * Согласие клиента в приложении здесь не требуется — клиент просит списать сам, но карта должна быть привязана к телефону.
+ */
+export function quotePos(db, point, { card, lines }) {
+  const { user } = cardOwner(db, card);
+  const acc = getAccount(db, user.id);
+  const res = { profileId: profileId(user.id), balance: acc.balance, available: acc.available, maxPoints: 0 };
+  if (!point.active || point.kind === 'earn' || point.redeem_bp <= 0) return { ...res, reason: 'point_no_redeem' };
+  if (user.stub) return { ...res, reason: 'card_not_bound' };
+  const settings = getSettings(db);
+  const eligible = posEligible(lines, settings);
+  const kopPerPoint = settings.rubPerPoint * 100;
+  const baseKop = eligible.reduce((x, l) => x + l.sum, 0), capKop = eligible.reduce((x, l) => x + l.cap, 0);
+  const maxPoints = Math.max(0, Math.min(acc.available, Math.floor((baseKop * point.redeem_bp) / (10000 * kopPerPoint)), Math.floor(capKop / kopPerPoint)));
+  return { ...res, maxPoints, rubPerPoint: settings.rubPerPoint };
+}
+
+/**
+ * Резерв и раскладка скидки по чеку.
+ * mode=auto: максимум по правилам, только если клиент включил списание в приложении;
+ * mode=cashier: сумма, которую ввёл кассир (points), не больше потолка.
+ */
+export function reservePos(db, cfg, point, { ref, card, lines, mode = 'auto', points: requested }) {
   if (typeof ref !== 'string' || !ref || ref.length > 200) throw new HttpError(400, 'no_ref', 'Нужен ref чека');
   const none = (reason) => ({ points: 0, discount: '0.00', lines: [], reason });
   if (!point.active) return none('point_inactive');
@@ -370,17 +395,24 @@ export function reservePos(db, cfg, point, { ref, card, lines }) {
   const settings = getSettings(db);
   const { user } = cardOwner(db, card);
   if (user.stub) return none('card_not_bound');
-  if (!user.auto_redeem) { cancelPos(db, point, ref); return none('not_opted_in'); }
+  if (mode !== 'cashier' && !user.auto_redeem) { cancelPos(db, point, ref); return none('not_opted_in'); }
+  if (mode === 'cashier' && !(Number.isInteger(requested) && requested > 0)) { cancelPos(db, point, ref); return none('nothing_requested'); }
   releaseExpiredHolds(db);
   const eligible = posEligible(lines, settings);
   const baseKop = eligible.reduce((s, l) => s + l.sum, 0);
   const kopPerPoint = settings.rubPerPoint * 100;
+  const done = one(db, "SELECT * FROM holds WHERE point_id=? AND ref=? AND status='COMMITTED' AND user_id=?", point.id, ref, user.id);
+  if (done) {   // уже списано кнопкой кассира (writeOff): пересчёт скидок не меняет сумму
+    const spread = spreadDiscount(eligible, Math.round(done.points * kopPerPoint));
+    return { holdId: done.id, points: done.points, committed: true, discount: formatKop(Math.round(done.points * kopPerPoint)), lines: spread.lines.map((l) => ({ number: l.number, discount: formatKop(l.kop) })) };
+  }
   return tx(db, () => {
     const ex = one(db, "SELECT * FROM holds WHERE point_id=? AND ref=? AND status='HELD'", point.id, ref);
     const acc = one(db, 'SELECT balance, held FROM accounts WHERE user_id=?', user.id);
     const available = acc.balance - acc.held + (ex && ex.user_id === user.id ? ex.points : 0);
     const capKop = eligible.reduce((s, l) => s + l.cap, 0);
     let points = Math.max(0, Math.min(available, Math.floor((baseKop * point.redeem_bp) / (10000 * kopPerPoint)), Math.floor(capKop / kopPerPoint)));
+    if (mode === 'cashier') points = Math.min(points, requested);
     if (ex) { run(db, 'UPDATE accounts SET held=held-? WHERE user_id=?', ex.points, ex.user_id); }
     if (points <= 0) {
       if (ex) run(db, "UPDATE holds SET status='CANCELLED' WHERE id=?", ex.id);
@@ -397,6 +429,40 @@ export function reservePos(db, cfg, point, { ref, card, lines }) {
     }
     run(db, 'UPDATE accounts SET held=held+? WHERE user_id=?', points, user.id);
     return { holdId: id, points, discount: formatKop(Math.round(points * kopPerPoint)), lines: spread.lines.map((l) => ({ number: l.number, discount: formatKop(l.kop) })), expiresAt: exp };
+  });
+}
+
+/** Кнопка «оплатить бонусами» (CardPlugin.writeOff): списать зарезервированное под чек сразу. txId = id резерва. */
+export function writeoffPos(db, point, { ref, points, card }) {
+  const owner = card ? cardOwner(db, card).user.id : null;   // плагин передаёт карту: резерв должен быть её владельца
+  return tx(db, () => {
+    const h = one(db, "SELECT * FROM holds WHERE point_id=? AND ref=? AND status IN ('HELD','COMMITTED') AND (? IS NULL OR user_id=?) ORDER BY created_at DESC LIMIT 1",
+      point.id, String(ref ?? ''), owner, owner);
+    if (!h) throw new HttpError(409, 'no_reserve', 'Нет резерва баллов по этому чеку: пересчитайте чек');
+    if (h.status === 'COMMITTED') return { txId: h.id, points: h.points, duplicate: true, balance: getAccount(db, h.user_id).balance };
+    const take = Number.isInteger(points) && points > 0 ? Math.min(points, h.points) : h.points;
+    run(db, 'UPDATE accounts SET held=held-?, balance=balance-? WHERE user_id=?', h.points, take, h.user_id);
+    run(db, "UPDATE holds SET status='COMMITTED', points=? WHERE id=?", take, h.id);
+    insertLedger(db, { userId: h.user_id, pointId: point.id, type: 'REDEEM', points: -take, baseKop: h.check_kop, receiptKey: 'pos:' + h.ref, idemKey: 'redeem:' + h.id, meta: { ref: h.ref, via: 'writeOff' } });
+    return { txId: h.id, points: take, balance: getAccount(db, h.user_id).balance };
+  });
+}
+
+/** Откат списания (CardPlugin.rollback): чек аннулирован или кассир отменил оплату бонусами. Идемпотентно. */
+export function rollbackPos(db, point, txId) {
+  return tx(db, () => {
+    const h = one(db, 'SELECT * FROM holds WHERE id=? AND point_id=?', String(txId ?? ''), point.id);
+    if (!h) throw new HttpError(404, 'hold_not_found', 'Списание не найдено');
+    if (h.status === 'HELD') {
+      run(db, "UPDATE holds SET status='CANCELLED' WHERE id=?", h.id);
+      run(db, 'UPDATE accounts SET held=held-? WHERE user_id=?', h.points, h.user_id);
+      return { status: 'CANCELLED' };
+    }
+    if (h.status !== 'COMMITTED') return { status: h.status, duplicate: true };
+    run(db, "UPDATE holds SET status='REVERSED' WHERE id=?", h.id);
+    run(db, 'UPDATE accounts SET balance=balance+? WHERE user_id=?', h.points, h.user_id);
+    insertLedger(db, { userId: h.user_id, pointId: point.id, type: 'REDEEM_REVERSAL', points: h.points, receiptKey: 'pos:' + h.ref, idemKey: 'redeem-rev:' + h.id, meta: { via: 'rollback' } });
+    return { status: 'REVERSED', balance: getAccount(db, h.user_id).balance };
   });
 }
 
@@ -418,6 +484,7 @@ function commitReceiptRedemption(db, point, userId, redemption, receiptKey, key)
   const want = Number(redemption?.points);
   if (!redemption || !Number.isInteger(want) || want <= 0) return 0;
   const h = redemption.ref ? one(db, 'SELECT * FROM holds WHERE point_id=? AND ref=? ORDER BY created_at DESC LIMIT 1', point.id, String(redemption.ref)) : null;
+  if (h && h.status === 'COMMITTED' && h.user_id === userId) return h.points;   // уже списано кнопкой кассира (writeOff)
   if (h && h.status === 'HELD') {
     run(db, "UPDATE holds SET status='COMMITTED' WHERE id=?", h.id);
     run(db, 'UPDATE accounts SET held=held-? WHERE user_id=?', h.points, h.user_id);
@@ -439,9 +506,12 @@ function releaseReceiptHold(db, point, ref) {
 
 /** Возврат товара по чеку, где списывались баллы: возвращаем списанное пропорционально сумме возврата. */
 function returnReceiptRedemption(db, point, orig, payload, key) {
-  const spent = one(db, "SELECT COALESCE(SUM(-points),0) s FROM ledger WHERE type='REDEEM' AND receipt_key=? AND point_id=?", orig.receipt_key, point.id).s;
+  let ref = payload.originalReceipt?.ref ?? null;
+  try { ref = JSON.parse(orig.meta || '{}').ref || ref; } catch { /* старые записи без meta.ref */ }
+  const keys = [orig.receipt_key, 'pos:' + (ref ?? '-')];   // списание при пробитии или кнопкой кассира до пробития
+  const spent = one(db, "SELECT COALESCE(SUM(-points),0) s FROM ledger WHERE type='REDEEM' AND receipt_key IN (?,?) AND point_id=?", ...keys, point.id).s;
   if (spent <= 0) return 0;
-  const back = one(db, "SELECT COALESCE(SUM(points),0) s FROM ledger WHERE type='REDEEM_REVERSAL' AND receipt_key=? AND point_id=?", orig.receipt_key, point.id).s;
+  const back = one(db, "SELECT COALESCE(SUM(points),0) s FROM ledger WHERE type='REDEEM_REVERSAL' AND receipt_key IN (?,?) AND point_id=?", ...keys, point.id).s;
   let origTotal = 0;
   try { origTotal = Math.abs(parseKop(String(payload.originalReceipt?.total ?? JSON.parse(orig.meta || '{}').total ?? '0'))); } catch { origTotal = 0; }
   const refundTotal = Math.abs(parseKop(String(payload.receipt?.total ?? '0')));

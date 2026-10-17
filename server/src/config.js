@@ -19,6 +19,11 @@ export function loadConfig(overrides = {}) {
     redeemConfirmAttempts: int('REDEEM_CONFIRM_ATTEMPTS', 5),
     // юридические документы: версия попадает в журнал согласий; ссылки показываются на экране входа
     docsVersion: env.DOCS_VERSION || '1',
+    publicUrl: (env.PUBLIC_URL || (env.DOMAIN ? 'https://' + env.DOMAIN : '')).replace(/\/$/, ''),   // для ссылок в СМС
+    support: { phone: env.SUPPORT_PHONE || '+7 929 838-45-16', email: env.SUPPORT_EMAIL || 'timurshokarov1001@gmail.com' },
+    backupDir: env.BACKUP_DIR || '',                 // ежедневная копия БД (пусто = выключено)
+    backupKeepDays: int('BACKUP_KEEP_DAYS', 14),
+    auditKeepDays: int('AUDIT_KEEP_DAYS', 1095),     // журнал действий хранится 3 года
     docs: {
       rules: env.DOC_RULES_URL || '/legal/rules.html',
       privacy: env.DOC_PRIVACY_URL || '/legal/privacy.html',
