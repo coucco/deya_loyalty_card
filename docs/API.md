@@ -35,6 +35,19 @@
 
 Лимит = сумма позиций с `payBonusAllowed≠false` и без скидки Set10 (если не разрешено в настройках) × «Макс. оплата баллами, %» точки; не больше доступных баллов; только если клиент включил `autoRedeem`.
 
+## Касса: карта, телефон, активация пластика, кнопка «оплатить бонусами» (плагин карт)
+
+| Метод | Тело | Ответ |
+|---|---|---|
+| `POST /api/v1/pos/card/status` | `{card}` | `{known, card, kind, state: free\|guest\|bound\|blocked\|closed, profileId, name, phone (маска), balance, available}` |
+| `POST /api/v1/pos/card/by-phone` | `{phone}` | то же для карты профиля (пластик, иначе виртуальная); `404`, если нет |
+| `POST /api/v1/pos/activate/start` | `{card, phone}` | СМС с кодом покупателю; `{sent, existingProfile, replaces: "****1234"\|null}` |
+| `POST /api/v1/pos/activate/confirm` | `{card, phone, code}` | `{profileId, transferred, replaced, balance}`; согласия пишутся с каналом `pos_sms` |
+| `POST /api/v1/pos/redeem/quote` | `{card, lines}` | потолок `{maxPoints, balance, available, profileId}` (без резерва) |
+| `POST /api/v1/pos/redeem/reserve` | + `mode: "cashier", points` | резерв суммы кассира (согласие в приложении не нужно) |
+| `POST /api/v1/pos/redeem/writeoff` | `{ref, card, points}` | списание по резерву сразу (`txId`) |
+| `POST /api/v1/pos/redeem/rollback` | `{txId}` | откат списания (`REVERSED`) или снятие резерва |
+
 ## Списание (точки трат)
 
 Все методы с ключом точки; `card` — номер карты, либо `phone` вместо него.
@@ -65,12 +78,14 @@
 | `GET /api/me` | баланс, карта (`null`, если пул пуст — выдаётся при следующем запросе), `physicalCards`, QR, `settings {autoRedeem, marketing}`, `pending` (коды подтверждения списаний), последняя операция |
 | `GET /api/me/history?limit=&before=` | журнал |
 | `PATCH /api/me` `{name?, autoRedeem?, marketing?}` | имя; списание в гипермаркете; согласие на рассылки (пишется в журнал) |
-| `POST /api/me/cards/bind` `{number, code}` | привязать пластиковую карту, баллы с неё переносятся |
+| `POST /api/me/cards/bind` `{number, code, replace?}` | привязать пластиковую карту (баллы переносятся); вторая — только `replace:true`, старая блокируется |
+| `POST /api/me/phone/request` `{phone}` → `POST /api/me/phone/confirm` `{phone, code}` | смена номера: код на новый номер; ID профиля, баллы и карты не меняются |
 | `DELETE /api/me` | удалить аккаунт |
 | `GET /api/points` | публичные проценты: места трат и начисления |
 
 ## Администратор
 
 `GET/POST /api/admin/points`, `PATCH /api/admin/points/:id` (`accrualPct`, `redeemPct`, `active`, `name`, `kind`, `confirmRedeem`),
+`GET /api/admin/users/:id` (карточка для поддержки: карты, согласия, журнал), `POST /api/admin/users/:id/phone` `{phone, reason}`, `POST /api/admin/users/:id/merge` `{from: ID профиля, reason}`, `POST /api/admin/cards/:number/block` `{blocked, reason}`, `POST /api/admin/cards/:number/unbind`,
 `GET /api/admin/cards/pool`, `POST /api/admin/cards/import` (`{kind: virtual|physical, text: "номер[;код]\n…"}` или `{kind, range:{from,to}}`), `GET /api/admin/metrics?days=30`,
 `PUT /api/admin/settings` также `accrue_on_discounted`, `redeem_on_discounted`, `price3_action_ids`, `POST /api/admin/points/:id/rotate-key`, `PUT /api/admin/settings` (`rub_per_point`, `rounding`), `GET /api/admin/users?q=`, `GET /api/admin/users/:id`, `POST /api/admin/users/:id/adjust` `{points, reason}`, `GET /api/admin/cards.csv`, `GET /api/admin/stats`, `GET /api/admin/audit`.

@@ -20,6 +20,8 @@
             <Boolean key="card.activation" localeKey="card.activation.description" default-value="true"/>
             <Boolean key="card.phone.search" localeKey="card.phone.search.description" default-value="true"/>
             <String key="card.category.guid" localeKey="card.category.guid.description"/>
+            <Boolean key="card.config.card.info.search.card" localeKey="card.info.search.description" default-value="true"/>
+            <Boolean key="card.config.card.info.use.receipt" localeKey="card.info.receipt.description" default-value="true"/>
             <Boolean key="log.payload" localeKey="log.payload.description" default-value="false"/>
         </Options>
         <LoyaltyPlugin localeKey="plugin.name" id="ext.deya.bonus.accrual">

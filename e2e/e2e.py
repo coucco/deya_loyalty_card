@@ -193,6 +193,28 @@ try:
         req('PATCH', '/api/admin/points/cinema', {'confirmRedeem': False}, token=ADMIN)
         check('сверка журнала и балансов без расхождений (после новых операций)', req('GET', '/api/admin/stats', token=ADMIN)[1]['mismatches'] == 0)
 
+        print('8b. Профиль: ID, поддержка, смена номера; карточка клиента в админке')
+        page.click('text=Профиль'); page.wait_for_selector('text=ID профиля')
+        pid = req('GET', '/api/me', token=token)[1]['user']['profileId']
+        check('в профиле виден неизменный ID профиля', page.locator(f'text=ID профиля {pid}').count() == 1)
+        check('контакты поддержки: телефон и почта (с ID профиля в теме письма)', page.locator('a[href="tel:+79298384516"]').count() >= 1
+              and page.locator(f'a[href*="mailto:timurshokarov1001@gmail.com"][href*="{pid}"]').count() >= 1)
+        page.click('text=Сменить ›'); page.fill('input[placeholder="Новый номер: 999 123-45-67"]', '9997776655')
+        page.click('.sheet >> text=Получить код'); page.wait_for_selector('input[placeholder="Код из СМС"]:visible')
+        time.sleep(0.3); logf.flush(); logf.seek(0)
+        newcode = re.findall(r'Код (\d{4}) для смены номера', logf.read())[-1]
+        page.fill('input[placeholder="Код из СМС"]', newcode); page.click('.sheet >> text=Подтвердить'); page.wait_for_selector('text=Номер изменён')
+        me2 = req('GET', '/api/me', token=token)[1]
+        check('смена номера по СМС: тот же профиль и баланс, новый номер', me2['user']['profileId'] == pid and me2['user']['phone'].endswith('55') and me2['balance'] == 230)
+        page.screenshot(path=f'{SHOTS}/18-profile-support.png')
+        ap = b.new_context(viewport={'width': 1200, 'height': 900}).new_page()
+        ap.goto(BASE + '/admin'); ap.fill('input[type=password]', ADMIN); ap.click('text=Войти'); ap.wait_for_selector('text=Клиенты')
+        ap.fill('input[placeholder="телефон, карта или ID профиля"]', pid); ap.click('text=Найти'); ap.click(f'a:has-text("{pid}")')
+        ap.wait_for_selector(f'h3:has-text("Профиль {pid}")')
+        check('админка: карточка клиента — карты, согласия, журнал действий', ap.locator('text=Журнал действий').count() == 2 and ap.locator('td:has-text("пластик")').count() >= 1
+              and ap.locator('td:has-text("phone_changed")').count() >= 1)
+        ap.screenshot(path=f'{SHOTS}/19-admin-client.png', full_page=True)
+
         print('9. Узкий экран и PWA')
         small = b.new_context(viewport={'width': 320, 'height': 568}, device_scale_factor=2).new_page()
         small.goto(BASE + '/'); small.wait_for_selector('input[type=tel]')

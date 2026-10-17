@@ -72,6 +72,14 @@ function formatPhoneInput(raw) {
   return { text: out, digits: d };
 }
 const docLink = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
+const telHref = (p) => 'tel:' + String(p || '').replace(/[^\d+]/g, '');
+/** Контакты поддержки: телефон и почта (в письмо подставляется ID профиля, чтобы поддержка сразу нашла клиента). */
+function supportLine(sup, profileId) {
+  if (!sup) return '';
+  const subject = encodeURIComponent('Карта ДЕЯ' + (profileId ? ', профиль ' + profileId : ''));
+  return h('p', { class: 'lead support', style: 'text-align:center;margin-top:14px;font-size:13px' }, 'Поддержка: ',
+    h('a', { href: telHref(sup.phone) }, sup.phone), ' · ', h('a', { href: `mailto:${sup.email}?subject=${subject}` }, sup.email));
+}
 /** Галочка согласия. Обязательные согласия не отмечены заранее (152-ФЗ), рекламное — отдельно и по желанию (38-ФЗ). */
 function consentBox(key, ...label) {
   const box = h('input', { type: 'checkbox', 'aria-label': key });
@@ -113,7 +121,8 @@ async function viewLogin() {
     h('h2', { style: 'margin-top:28px' }, 'Баллы с каждой покупки в гипермаркете'),
     h('div', { class: 'field', style: 'margin-top:28px' }, h('span', { class: 'cc' }, '+7'), input),
     consents, err, h('div', null, btn),
-    known ? h('p', { class: 'lead', style: 'text-align:center;margin-top:12px;font-size:12px' }, docLink(d.rules, 'Правила программы'), ' · ', docLink(d.privacy, 'Политика конфиденциальности')) : ''));
+    known ? h('p', { class: 'lead', style: 'text-align:center;margin-top:12px;font-size:12px' }, docLink(d.rules, 'Правила программы'), ' · ', docLink(d.privacy, 'Политика конфиденциальности')) : '',
+    supportLine(state.legal.support)));
   btn.disabled = !ready();
   input.focus();
 }
@@ -296,6 +305,35 @@ function switchRow(title, sub, on, save) {
   box.addEventListener('change', async () => { try { await save(box.checked); toast('Сохранено'); } catch (e) { box.checked = !box.checked; toast(e.message); } });
   return h('label', { class: 'row-set' }, h('span', null, title, h('small', null, sub)), box);
 }
+/** Смена номера: код приходит на новый номер. Профиль (ID), баллы и карты остаются. */
+function phoneSheet() {
+  const phone = h('input', { type: 'tel', inputmode: 'numeric', placeholder: 'Новый номер: 999 123-45-67', autocomplete: 'off' });
+  const code = h('input', { type: 'text', inputmode: 'numeric', placeholder: 'Код из СМС', maxlength: 4, autocomplete: 'one-time-code' });
+  const codeField = h('div', { class: 'field', hidden: true }, code);
+  const err = h('div', { class: 'err' });
+  const digits = () => '7' + formatPhoneInput(phone.value).digits;
+  phone.addEventListener('input', () => { phone.value = formatPhoneInput(phone.value).text; });
+  const btn = h('button', { class: 'btn' }, 'Получить код');
+  btn.addEventListener('click', async () => {
+    err.textContent = '';
+    try {
+      if (codeField.hidden) {
+        await api('POST', '/api/me/phone/request', { token: state.token, body: { phone: digits() } });
+        codeField.hidden = false; phone.disabled = true; btn.textContent = 'Подтвердить'; code.focus();
+      } else {
+        await api('POST', '/api/me/phone/confirm', { token: state.token, body: { phone: digits(), code: code.value.trim() } });
+        m.remove(); toast('Номер изменён'); render();
+      }
+    } catch (e) { err.textContent = e.message; }
+  });
+  const m = h('div', { class: 'modal', onclick: (e) => { if (e.target === m) m.remove(); } }, h('div', { class: 'sheet' },
+    h('h2', null, 'Сменить номер'), h('p', null, 'Пришлём код на новый номер. Ваш профиль, баллы и карты останутся прежними.'),
+    h('div', { class: 'field', style: 'margin-bottom:8px' }, h('span', { class: 'cc' }, '+7'), phone), codeField, err, btn,
+    h('p', { style: 'margin-top:10px;font-size:13px' }, 'Нет доступа к старому номеру или новый номер уже зарегистрирован — обратитесь в поддержку.'),
+    h('button', { class: 'btn light', style: 'margin-top:8px', onclick: () => m.remove() }, 'Отмена')));
+  document.body.append(m); phone.focus();
+}
+
 function bindSheet(current) {
   const num = h('input', { type: 'text', inputmode: 'numeric', placeholder: 'Номер с лицевой стороны', autocomplete: 'off' });
   const code = h('input', { type: 'text', inputmode: 'numeric', placeholder: 'Код активации (на обороте)', autocomplete: 'off', maxlength: 12 });
@@ -337,8 +375,9 @@ async function viewProfile() {
   const docs = state.legal.docs;
   page(h('div', { class: 'content' }, h('div', { class: 'topbar' }, h('h2', null, 'Профиль'), logoEl('mini')),
     h('div', { class: 'avatar' }, initial),
-    h('div', { style: 'text-align:center;color:var(--muted);font-size:13px;margin-bottom:14px' }, me.user.phone),
+    h('div', { style: 'text-align:center;color:var(--muted);font-size:13px;margin-bottom:14px' }, me.user.phone, h('br'), `ID профиля ${me.user.profileId}`),
     h('div', { class: 'row-set static' }, h('span', { style: 'flex:1' }, h('small', null, 'Имя'), nameInput)),
+    h('button', { class: 'row-set', onclick: () => phoneSheet() }, h('span', null, 'Номер телефона', h('small', null, me.user.phone + ' · баллы и карты сохранятся')), h('span', null, 'Сменить ›')),
     h('div', { class: 'row-set static' }, h('span', null, 'Карта в приложении', h('small', null, me.card && me.card.kind === 'virtual' ? me.card.number : 'выпускается…'))),
     me.physicalCards.map((n) => h('div', { class: 'row-set static' }, h('span', null, 'Пластиковая карта', h('small', null, n)))),
     h('button', { class: 'row-set', onclick: () => bindSheet(me.physicalCards[0]) }, me.physicalCards.length
@@ -353,6 +392,9 @@ async function viewProfile() {
       h('p', null, 'Покажите QR из приложения на кассе до оплаты. Баллы не сгорают.'),
       h('p', null, 'Тратить баллы можно в кино и боулинге на 3 этаже' + (hyper && hyper.redeemPct > 0 ? `, а в гипермаркете — до ${pctText(hyper.redeemPct)} чека (если включено в профиле).` : '.')),
       h('p', null, docLink(docs.rules, 'Правила программы'), ' · ', docLink(docs.privacy, 'Политика конфиденциальности'))) }, h('span', null, 'Как работают баллы', h('small', null, 'правила программы')), h('span', null, '›')),
+    h('div', { class: 'row-set static' }, h('span', null, 'Поддержка', h('small', null, 'вопросы по баллам, картам, смене номера')),
+      h('span', { style: 'text-align:right;font-size:14px' }, h('a', { href: telHref(me.support.phone) }, me.support.phone), h('br'),
+        h('a', { href: `mailto:${me.support.email}?subject=${encodeURIComponent('Карта ДЕЯ, профиль ' + me.user.profileId)}` }, 'написать на почту'))),
     h('button', { class: 'row-set', style: 'color:var(--danger)', onclick: async () => { await api('POST', '/api/auth/logout', { token: state.token }).catch(() => {}); state.token = null; store.del('deya_token'); go('login'); } }, h('span', null, 'Выйти')),
     h('button', { class: 'btn danger', onclick: () => {
       const m = h('div', { class: 'modal' }, h('div', { class: 'sheet' }, h('h2', null, 'Удалить аккаунт?'),

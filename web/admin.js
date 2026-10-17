@@ -21,6 +21,39 @@ async function load() {
   } catch (e) { if (e.status === 401) { token = ''; store.del('deya_admin'); login('Неверный токен'); } else app.replaceChildren(h('p', null, e.message)); }
 }
 
+/**
+ * Карточка клиента для поддержки: профиль, карты, баллы, согласия, журнал действий и операции поддержки.
+ * Каждое открытие карточки и каждое действие записываются в журнал (кто из поддержки, когда).
+ */
+async function clientCard(id, box) {
+  let c;
+  try { c = await call('GET', `/api/admin/users/${id}`); } catch (e) { box.textContent = e.message; return; }
+  const u = c.user;
+  const act = async (fn, okText) => { try { await fn(); alert(okText); clientCard(id, box); } catch (e) { alert(e.message); } };
+  const KIND = { virtual: 'приложение', physical: 'пластик' };
+  box.replaceChildren(h('section', { style: 'border:2px solid var(--brand)' },
+    h('h3', null, `Профиль ${u.profileId}` + (u.deleted_at ? (u.merged_into ? ` — объединён в ${1000000 + u.merged_into}` : ' — удалён') : '')),
+    h('p', null, `Телефон: ${u.phone || (u.stub ? 'нет (гостевой счёт пластика)' : '—')} · имя: ${u.name || '—'} · создан ${u.created_at.slice(0, 10)}`),
+    h('p', null, `Баллы: ${fmt(c.account.balance)} (доступно ${fmt(c.account.available)}) · списание в гипермаркете: ${u.auto_redeem ? 'включено' : 'выключено'} · рассылки: ${u.marketing_at ? 'да' : 'нет'}`),
+    h('table', null, h('tr', null, ['Карта', 'Тип', 'Статус', 'Привязана', ''].map((x) => h('th', null, x))),
+      c.cards.map((k) => h('tr', null, h('td', null, k.number), h('td', null, KIND[k.kind]), h('td', null, k.status), h('td', null, (k.bound_at || '').slice(0, 10)),
+        h('td', null, k.kind === 'physical' && k.status === 'active' ? [
+          h('button', { class: 'sbtn', onclick: () => act(() => call('POST', `/api/admin/cards/${k.number}/block`, { reason: prompt('Причина блокировки?') || '' }), 'Карта заблокирована') }, 'Заблокировать'), ' ',
+          h('button', { class: 'sbtn', onclick: () => confirm('Отвязать карту от профиля? Баллы останутся в профиле.') && act(() => call('POST', `/api/admin/cards/${k.number}/unbind`, { reason: prompt('Причина?') || '' }), 'Карта отвязана') }, 'Отвязать')] : '')))),
+    h('p', { style: 'margin-top:10px' },
+      h('button', { class: 'sbtn o', onclick: () => { const p = prompt('Новый номер телефона клиента (личность проверена)?'); if (p) act(() => call('POST', `/api/admin/users/${id}/phone`, { phone: p, reason: prompt('Причина (напр. утерян номер)?') || '' }), 'Номер изменён, входы по старому номеру завершены'); } }, 'Сменить телефон'), ' ',
+      h('button', { class: 'sbtn', onclick: () => { const f = prompt('ID профиля, который присоединить к этому (его баллы и карты перейдут сюда)?'); if (f && confirm(`Объединить профиль ${f} в ${u.profileId}? Отменить нельзя.`)) act(() => call('POST', `/api/admin/users/${id}/merge`, { from: f, reason: prompt('Причина?') || '' }), 'Профили объединены'); } }, 'Присоединить профиль'), ' ',
+      h('button', { class: 'sbtn', onclick: () => box.replaceChildren() }, 'Закрыть')),
+    h('h3', { style: 'margin-top:14px' }, 'Операции с баллами'),
+    h('table', null, c.history.slice(0, 30).map((e) => h('tr', null, h('td', null, e.created_at.replace('T', ' ').slice(0, 16)), h('td', null, e.type), h('td', null, e.point_name), h('td', null, fmt(e.points))))),
+    h('h3', { style: 'margin-top:14px' }, 'Согласия'),
+    h('table', null, c.consents.map((x) => h('tr', null, h('td', null, x.created_at.replace('T', ' ').slice(0, 16)), h('td', null, x.kind), h('td', null, x.granted ? 'дал' : 'отозвал'), h('td', null, `версия ${x.version}`), h('td', null, x.channel || 'app')))),
+    h('h3', { style: 'margin-top:14px' }, 'Журнал действий'),
+    h('table', null, c.audit.slice(0, 40).map((a) => h('tr', null, h('td', null, a.created_at.replace('T', ' ').slice(0, 19)), h('td', null, a.actor), h('td', null, a.action),
+      h('td', { style: 'color:var(--muted);font-size:12px' }, (a.detail || '').slice(0, 140)))))));
+  box.scrollIntoView({ behavior: 'smooth' });
+}
+
 const POOL_NAMES = { virtual: 'виртуальные (QR)', physical: 'пластиковые' };
 const STATUS_NAMES = { free: 'свободны', active: 'выданы', closed: 'закрыты', blocked: 'заблокированы' };
 function poolSection(pool) {
@@ -82,12 +115,13 @@ function draw(pts, stats, audit, pool, mx) {
   const accD = h('input', { type: 'checkbox' }); accD.checked = st.accrueOnDiscounted;
   const redD = h('input', { type: 'checkbox' }); redD.checked = st.redeemOnDiscounted;
   const p3 = h('input', { type: 'text', value: st.price3ActionIds.join(', '), placeholder: 'пусто = любая скидка Set10', style: 'width:300px' });
-  const q = h('input', { type: 'text', placeholder: 'телефон или карта' });
-  const found = h('div');
+  const q = h('input', { type: 'text', placeholder: 'телефон, карта или ID профиля' });
+  const found = h('div'), client = h('div');
   const search = async () => {
     const r = await call('GET', '/api/admin/users?q=' + encodeURIComponent(q.value));
-    found.replaceChildren(h('table', null, h('tr', null, ['Телефон', 'Имя', 'Карта', 'Баллы', 'В резерве', ''].map((x) => h('th', null, x))),
-      r.users.map((u) => h('tr', null, h('td', null, u.stub ? 'пластик без привязки' : u.phone), h('td', null, u.name || ''), h('td', null, u.card), h('td', null, fmt(u.balance)), h('td', null, fmt(u.held)),
+    found.replaceChildren(h('table', null, h('tr', null, ['ID профиля', 'Телефон', 'Имя', 'Карты', 'Баллы', 'В резерве', ''].map((x) => h('th', null, x))),
+      r.users.map((u) => h('tr', null, h('td', null, h('a', { href: '#', onclick: (e) => { e.preventDefault(); clientCard(u.id, client); } }, u.profileId)),
+        h('td', null, u.stub ? 'пластик без привязки' : u.phone), h('td', null, u.name || ''), h('td', null, u.card), h('td', null, fmt(u.balance)), h('td', null, fmt(u.held)),
         h('td', null, h('button', { class: 'sbtn', onclick: async () => {
           const v = prompt('На сколько изменить баллы? (например 100 или -50)'); if (!v) return;
           const why = prompt('Причина?') || '';
@@ -114,9 +148,9 @@ function draw(pts, stats, audit, pool, mx) {
       h('button', { class: 'sbtn', onclick: async () => {
         const r = await fetch('/api/admin/cards.csv', { headers: { Authorization: 'Bearer ' + token } });
         const a = h('a', { href: URL.createObjectURL(await r.blob()), download: 'cards.csv' }); a.click();
-      } }, 'Выгрузить карты (CSV)')), found),
-    h('section', null, h('h3', null, 'Журнал действий администратора'),
-      h('table', null, audit.slice(0, 15).map((a) => h('tr', null, h('td', null, a.created_at.replace('T', ' ').slice(0, 19)), h('td', null, a.action), h('td', { style: 'color:var(--muted);font-size:12px' }, (a.detail || '').slice(0, 120)))))));
+      } }, 'Выгрузить карты (CSV)')), found, client),
+    h('section', null, h('h3', null, 'Журнал действий (все участники, последние записи)'),
+      h('table', null, audit.slice(0, 30).map((a) => h('tr', null, h('td', null, a.created_at.replace('T', ' ').slice(0, 19)), h('td', null, a.actor), h('td', null, a.action), h('td', { style: 'color:var(--muted);font-size:12px' }, (a.detail || '').slice(0, 120)))))));
   search();
 }
 token ? load() : login();

@@ -24,4 +24,6 @@
     <entry key="card.activation.description">Предлагать активацию неактивированной пластиковой карты по телефону и СМС-коду</entry>
     <entry key="card.phone.search.description">Поиск карты по номеру телефона покупателя</entry>
     <entry key="card.category.guid.description">GUID категории карт для акций Set10 (режим external, если нужно)</entry>
+    <entry key="card.info.search.description">«Инфо по карте»: передавать плагину карту, найденную кассой (в т.ч. внутреннюю карту Set10)</entry>
+    <entry key="card.info.receipt.description">«Инфо по карте»: брать карту из текущего чека</entry>
 </properties>

@@ -24,4 +24,6 @@
     <entry key="card.activation.description">Offer activation of a new plastic card by phone and SMS code</entry>
     <entry key="card.phone.search.description">Search card by customer phone</entry>
     <entry key="card.category.guid.description">Card category GUID for Set10 actions (external mode)</entry>
+    <entry key="card.info.search.description">Card info: pass the card found by the POS to the plugin</entry>
+    <entry key="card.info.receipt.description">Card info: use the card from the current receipt</entry>
 </properties>
