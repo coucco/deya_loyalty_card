@@ -6,8 +6,13 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
+      BACKUP_DIR: /backups          # ежедневная проверенная копия БД (увозить с сервера: см. DEPLOY.md, раздел 4)
     volumes:
       - deya-data:/data
+      - deya-backups:/backups
+    logging:                        # технический лог запросов с ротацией
+      driver: json-file
+      options: { max-size: "20m", max-file: "10" }
     expose:
       - "3000"
   caddy:                       # HTTPS-сертификат выпускается и продлевается автоматически
@@ -25,5 +30,6 @@ services:
       - caddy-config:/config
 volumes:
   deya-data:
+  deya-backups:
   caddy-data:
   caddy-config:

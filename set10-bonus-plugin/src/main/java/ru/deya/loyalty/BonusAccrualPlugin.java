@@ -1,6 +1,7 @@
 package ru.deya.loyalty;
 
 import org.slf4j.Logger;
+import ru.crystals.pos.api.ext.loyal.dto.DiscountCancellationResult;
 import ru.crystals.pos.api.ext.loyal.dto.LoyaltyResult;
 import ru.crystals.pos.api.ext.loyal.dto.auxiliaries.LoyProviderFeedback;
 import ru.crystals.pos.api.plugin.LoyaltyPlugin;
@@ -14,8 +15,14 @@ import ru.crystals.pos.spi.receipt.Receipt;
  * <p>
  * Что делает: после пробития (фискализации) чека отправляет данные чека и номер карты покупателя
  * на сервер лояльности. Сервер сам считает, сколько баллов начислить (процент задаётся на сервере).
- * Что НЕ делает: не считает скидки (скидки по карте, «цена 3», считает сервер Set10), не меняет чек,
- * не показывает ничего кассиру.
+ * Дополнительно (выключено по умолчанию, redeem.enabled): на подытоге даёт скидку списанием баллов,
+ * размер которой решает сервер, см. {@link RedeemOnReceipt}.
+ * Что НЕ делает: не считает скидки Set10 (скидки по карте, «цена 3», считает сервер Set10).
+ * <p>
+ * Где касса вызывает методы (по SDK Set10): doDiscount — расчёт скидок на подытоге (после скидок Set10, поэтому
+ * плагин должен стоять последним в порядке провайдеров лояльности); cancelDiscount — возврат из оплаты к товарам
+ * или аннулирование; eventReceiptFiscalized — после фискализации (на кассах с API 0.0.46+ через onReceiptFiscalized);
+ * onSendFeedback — периодически для очереди неотправленных сообщений.
  * <p>
  * Надёжность: сначала пробуем отправить сразу (с короткими таймаутами). Если не вышло, отправка
  * ставится в очередь кассы (возвращаем «фидбэк»), и касса сама повторяет её через {@link #onSendFeedback}.
@@ -40,14 +47,33 @@ public class BonusAccrualPlugin implements LoyaltyPlugin {
     IntegrationProperties properties;
 
     private final FailureBreaker breaker = new FailureBreaker(3, 30_000L, System::currentTimeMillis);
+    private final FailureBreaker redeemBreaker = new FailureBreaker(3, 30_000L, System::currentTimeMillis);
     private volatile BonusServerClient client;
+    private volatile RedeemOnReceipt redeem;
 
     // ------------------------------------------------------------------ LoyaltyPlugin
 
-    /** Скидки считает Set10; плагин скидок не даёт. Возвращаем пустой результат. */
+    /**
+     * Скидки Set10 («цена 3») уже посчитаны кассой. Здесь — только списание баллов (если включено), иначе пустой результат.
+     */
     @Override
     public LoyaltyResult doDiscount(Receipt receipt) {
-        return new LoyaltyResult();
+        try {
+            return redeem().reserve(receipt, settings());
+        } catch (Exception | LinkageError e) {
+            log.error("Ошибка плагина при расчёте скидок", e);
+            return new LoyaltyResult();
+        }
+    }
+
+    @Override
+    public DiscountCancellationResult cancelDiscount(Receipt receipt, LoyaltyResult results) {
+        try {
+            redeem().cancel(receipt, results, settings());
+        } catch (Exception | LinkageError e) {
+            log.error("Ошибка плагина при отмене расчёта скидок", e);
+        }
+        return null;
     }
 
     @Override
@@ -60,9 +86,12 @@ public class BonusAccrualPlugin implements LoyaltyPlugin {
                 log.info("Плагин отключён настройкой (enabled=false), чек не отправляется");
                 return null;
             }
-            request = AccrualRequestBuilder.build(receipt, cfg);
+            request = AccrualRequestBuilder.build(receipt, cfg, redeem().redemptionFor(receipt, loyResults));
             if (request == null) {
                 return null; // нет карты приложения / возврат отключён: ничего отправлять не нужно
+            }
+            if (cfg.logPayload()) {
+                log.info("Чек {}, запрос на сервер: {}", request.idempotencyKey, request.json);
             }
             if (breaker.allow()) {
                 BonusServerClient.Outcome outcome = client().send(cfg, request.idempotencyKey, request.json);
@@ -151,6 +180,15 @@ public class BonusAccrualPlugin implements LoyaltyPlugin {
 
     private PluginSettings settings() {
         return new PluginSettings(properties);
+    }
+
+    private RedeemOnReceipt redeem() {
+        RedeemOnReceipt r = redeem;
+        if (r == null) {
+            r = new RedeemOnReceipt(log, client(), redeemBreaker);
+            redeem = r;
+        }
+        return r;
     }
 
     private BonusServerClient client() {

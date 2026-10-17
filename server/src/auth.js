@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { tx, one, run } from './db.js';
-import { HttpError, normalizePhone, sha256, randomToken } from './util.js';
+import { HttpError, normalizePhone, sha256, randomToken, nowIso } from './util.js';
 import { createUserWithCard } from './loyalty.js';
 
 const hmac = (cfg, s) => crypto.createHmac('sha256', cfg.secret).update(s).digest('hex');
@@ -26,13 +26,30 @@ export async function requestOtp(db, cfg, sms, rawPhone) {
   return { phone, resendInSec: cfg.otpResendSec };
 }
 
-export function verifyOtp(db, cfg, rawPhone, code, consent) {
-  const r = verifyOtpInner(db, cfg, rawPhone, code, consent);
+/**
+ * Согласия при регистрации: pd (обработка ПДн) и rules (правила программы) обязательны, marketing (рассылки) — по желанию.
+ * Старые клиенты присылают consent:true — это pd+rules.
+ */
+export function normalizeConsents(body) {
+  const c = body && typeof body.consents === 'object' && body.consents ? body.consents : {};
+  const legacy = body?.consent === true;
+  return { pd: c.pd === true || legacy, rules: c.rules === true || legacy, marketing: c.marketing === true };
+}
+
+/** Запись в журнал согласий (только добавление) и отметка в профиле. */
+export function recordConsent(db, cfg, userId, kind, granted, ip, channel = 'app') {
+  const t = nowIso();
+  run(db, 'INSERT INTO consents(user_id,kind,version,granted,ip,created_at,channel) VALUES(?,?,?,?,?,?,?)', userId, kind, cfg.docsVersion, granted ? 1 : 0, ip ?? null, t, channel);
+  if (kind === 'marketing') run(db, 'UPDATE users SET marketing_at=? WHERE id=?', granted ? t : null, userId);
+}
+
+export function verifyOtp(db, cfg, rawPhone, code, consents, ip) {
+  const r = verifyOtpInner(db, cfg, rawPhone, code, consents, ip);
   if (r.fail) throw new HttpError(400, 'wrong_code', 'Неверный код');
   return r;
 }
 
-function verifyOtpInner(db, cfg, rawPhone, code, consent) {
+function verifyOtpInner(db, cfg, rawPhone, code, consents, ip) {
   const phone = normalizePhone(rawPhone);
   return tx(db, () => {
     const o = one(db, 'SELECT * FROM otp WHERE phone=?', phone);
@@ -49,9 +66,12 @@ function verifyOtpInner(db, cfg, rawPhone, code, consent) {
     let user = one(db, 'SELECT * FROM users WHERE phone=? AND deleted_at IS NULL', phone);
     let isNew = false;
     if (!user) {
-      if (!consent) throw new HttpError(400, 'consent_required', 'Нужно согласие на обработку данных');
+      if (!consents.pd || !consents.rules) throw new HttpError(400, 'consent_required', 'Нужно согласие на обработку персональных данных и с правилами программы');
       createUserWithCard(db, cfg, phone, true);
       user = one(db, 'SELECT * FROM users WHERE phone=?', phone);
+      recordConsent(db, cfg, user.id, 'pd', true, ip);
+      recordConsent(db, cfg, user.id, 'rules', true, ip);
+      recordConsent(db, cfg, user.id, 'marketing', consents.marketing, ip);
       isNew = true;
     }
     const token = randomToken();

@@ -12,6 +12,24 @@ export function loadConfig(overrides = {}) {
     publicDir: env.PUBLIC_DIR || new URL('../../web/', import.meta.url).pathname,
     cardPrefix: env.CARD_PREFIX || '2000',        // префикс номеров карт приложения
     cardLength: int('CARD_LENGTH', 13),
+    // pool — карты выдаются из пула номеров, заранее заведённых в Set10 (админка → «Пул карт»);
+    // generate — сервер сам генерирует номер (только для пробного запуска: Set10 такие карты не знает)
+    cardIssueMode: env.CARD_ISSUE_MODE || (env.NODE_ENV === 'production' ? 'pool' : 'generate'),
+    posHoldTtlSec: int('POS_HOLD_TTL_SEC', 1800),   // резерв баллов под чек гипермаркета (от подытога до оплаты)
+    redeemConfirmAttempts: int('REDEEM_CONFIRM_ATTEMPTS', 5),
+    // юридические документы: версия попадает в журнал согласий; ссылки показываются на экране входа
+    docsVersion: env.DOCS_VERSION || '1',
+    publicUrl: (env.PUBLIC_URL || (env.DOMAIN ? 'https://' + env.DOMAIN : '')).replace(/\/$/, ''),   // для ссылок в СМС
+    support: { phone: env.SUPPORT_PHONE || '+7 929 838-45-16', email: env.SUPPORT_EMAIL || 'timurshokarov1001@gmail.com' },
+    backupDir: env.BACKUP_DIR || '',                 // ежедневная копия БД (пусто = выключено)
+    backupKeepDays: int('BACKUP_KEEP_DAYS', 14),
+    auditKeepDays: int('AUDIT_KEEP_DAYS', 1095),     // журнал действий хранится 3 года
+    docs: {
+      rules: env.DOC_RULES_URL || '/legal/rules.html',
+      privacy: env.DOC_PRIVACY_URL || '/legal/privacy.html',
+      pd: env.DOC_PD_CONSENT_URL || '/legal/pd-consent.html',
+      marketing: env.DOC_MARKETING_URL || '/legal/marketing-consent.html',
+    },
     smsProvider: env.SMS_PROVIDER || 'console',   // console | http
     smsHttpUrl: env.SMS_HTTP_URL || '',           // шаблон URL: {phone} {text}
     smsHttpAuth: env.SMS_HTTP_AUTH || '',         // значение заголовка Authorization (если нужно)
@@ -25,6 +43,7 @@ export function loadConfig(overrides = {}) {
     trustProxy: env.TRUST_PROXY === '1',
   };
   Object.assign(c, overrides);
+  if (!['pool', 'generate'].includes(c.cardIssueMode)) throw new Error('CARD_ISSUE_MODE: pool | generate');
   if (c.isProd) {
     if (c.adminToken.length < 24) throw new Error('В production нужен ADMIN_TOKEN (не короче 24 символов)');
     if (c.smsProvider === 'console') throw new Error('В production нельзя SMS_PROVIDER=console: коды уходили бы в лог. Настройте SMS_PROVIDER=http');

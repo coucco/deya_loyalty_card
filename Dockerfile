@@ -5,7 +5,7 @@ COPY server/package.json server/
 COPY server/src server/src
 COPY web web
 COPY scripts scripts
-RUN mkdir /data && chown node:node /data
+RUN mkdir /data /backups && chown node:node /data /backups
 USER node
 VOLUME /data
 EXPOSE 3000

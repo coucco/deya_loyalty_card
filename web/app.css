@@ -117,3 +117,17 @@ video{width:100%;border-radius:16px;background:#000}
 .admin .stat{background:var(--beige);border-radius:12px;padding:10px 14px}
 .admin .stat b{display:block;font-size:20px}
 .admin .keybox{background:#FFF4D6;border-radius:10px;padding:10px;font-family:monospace;word-break:break-all;margin-top:8px}
+
+/* согласия, переключатели, код подтверждения, штрихкод */
+.consents{margin:14px 0 4px;display:flex;flex-direction:column;gap:10px}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.4;color:#3a362f;cursor:pointer}
+.consent input{width:20px;height:20px;flex:none;margin-top:1px;accent-color:var(--brand)}
+.consent a,.sheet a{color:var(--brand);text-decoration:underline}
+.switch{appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:14px;background:var(--beige-dark);position:relative;flex:none;cursor:pointer;transition:background .2s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .2s}
+.switch:checked{background:var(--brand)}
+.switch:checked::after{left:21px}
+.pending{background:#fff4d6;border:2px solid #F5C84B;border-radius:16px;padding:12px 16px;margin-bottom:12px;text-align:center}
+.pending small{display:block;font-size:12px;color:#6b5a2b}
+.pending b{display:block;font-size:34px;letter-spacing:8px;margin:4px 0}
+.codebox{display:flex;justify-content:center;min-height:120px;align-items:center}

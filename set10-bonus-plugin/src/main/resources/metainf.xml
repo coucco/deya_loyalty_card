@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<SetIntegration set10-api-version="0.0.3" version="1.0.0" xmlns="http://crystals.ru/set10/api/metainf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://crystals.ru/set10/api/metainf metainf.xsd ">
+<SetIntegration set10-api-version="0.0.3" version="1.2.0" xmlns="http://crystals.ru/set10/api/metainf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://crystals.ru/set10/api/metainf metainf.xsd ">
     <ExternalService serviceType="LOYALTY" localeKey="bonus.service.name" id="ext.deya.bonus.accrual">
         <Options>
             <Boolean key="enabled" localeKey="enabled.description" default-value="true"/>
@@ -11,9 +11,24 @@
             <Integer key="read.timeout" localeKey="read.timeout.description" minValue="200" maxValue="60000" default-value="3000"/>
             <Boolean key="send.refunds" localeKey="send.refunds.description" default-value="true"/>
             <Integer key="max.attempts" localeKey="max.attempts.description" minValue="1" maxValue="100000" default-value="200"/>
+            <Boolean key="redeem.enabled" localeKey="redeem.enabled.description" default-value="false"/>
+            <String key="redeem.url" localeKey="redeem.url.description"/>
+            <Integer key="redeem.timeout" localeKey="redeem.timeout.description" minValue="200" maxValue="10000" default-value="1500"/>
+            <String key="redeem.discount.type" localeKey="redeem.discount.type.description" default-value="SUM"/>
+            <String key="redeem.mode" localeKey="redeem.mode.description" default-value="both"/>
+            <String key="card.mode" localeKey="card.mode.description" default-value="internal"/>
+            <Boolean key="card.activation" localeKey="card.activation.description" default-value="true"/>
+            <Boolean key="card.phone.search" localeKey="card.phone.search.description" default-value="true"/>
+            <String key="card.category.guid" localeKey="card.category.guid.description"/>
+            <Boolean key="card.config.card.info.search.card" localeKey="card.info.search.description" default-value="true"/>
+            <Boolean key="card.config.card.info.use.receipt" localeKey="card.info.receipt.description" default-value="true"/>
+            <Boolean key="log.payload" localeKey="log.payload.description" default-value="false"/>
         </Options>
         <LoyaltyPlugin localeKey="plugin.name" id="ext.deya.bonus.accrual">
-            <Description>Начисление бонусов: передаёт данные пробитого чека на сервер лояльности.</Description>
+            <Description>Бонусы ТРЦ Дея: передаёт пробитый чек на сервер лояльности (начисление); по настройке — списание баллов скидкой.</Description>
         </LoyaltyPlugin>
+        <CardPlugin localeKey="card.plugin.name" id="ext.deya.card">
+            <Description>Карты ДЕЯ: активация пластика по СМС на кассе, поиск по телефону, баланс и оплата баллами.</Description>
+        </CardPlugin>
     </ExternalService>
 </SetIntegration>

@@ -38,6 +38,35 @@ try:
     exp_ok = ('ACCRUAL', 8) in types and ('ACCRUAL_REVERSAL', -5) in types and me['balance'] == 3 and len(hist) == 2
     print('сервер записал ровно одну продажу (дубль не задвоил) и один возврат:', 'ДА' if exp_ok else 'НЕТ')
     ok = ok and exp_ok
+    # списание в чеке: клиент включил «списывать баллы в гипермаркете», лимит 5% чека.
+    # чек 150.00: 5% = 7 баллов, но на счёте 3 -> списать 3 (скидка 3.00). Поддельный чек не уменьшает сумму позиции
+    # (это делает настоящая касса), поэтому начисление здесь от 150.00 = 8; на кассе будет от 147.00 = 7
+    req('PATCH', '/api/me', {'autoRedeem': True}, token=tok)
+    req('PATCH', '/api/admin/points/hypermarket', {'redeemPct': 5}, token=ADMIN)
+    out = subprocess.run(['java', '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', f'-Ddeya.live.url={BASE}/api/v1/accruals', f'-Ddeya.live.key={key}', f'-Ddeya.live.card={card}',
+        '-Ddeya.live.redeem=1', '-Ddeya.live.expectPoints=3', '-cp', ':'.join(cp), 'ru.deya.loyalty.SelfTest'], capture_output=True, text=True)
+    print(out.stdout.strip(), out.stderr.strip()[-500:])
+    me = req('GET', '/api/me', token=tok)
+    types = [(h['type'], h['points']) for h in req('GET', '/api/me/history', token=tok)['items']][:2]
+    print('списание в чеке:', types, '| баланс:', me['balance'], '| резерв:', me['balance'] - me['available'])
+    red_ok = out.returncode == 0 and ('REDEEM', -3) in types and ('ACCRUAL', 8) in types and me['balance'] == 8 and me['available'] == 8
+    print('списано 3, начислено 8, резерв снят:', 'ДА' if red_ok else 'НЕТ')
+    ok = ok and red_ok
+    # плагин карт: активация пластика на кассе по СМС и «оплатить бонусами» кнопкой кассира (режим external)
+    req('POST', '/api/admin/cards/import', {'kind': 'physical', 'text': '999000000000006;1111'}, token=ADMIN)
+    plastic_key = 'live-plastic-1'
+    req('POST', '/api/v1/accruals', {'idempotencyKey': plastic_key, 'operation': 'SALE', 'card': {'number': '999000000000006'},
+        'receipt': {'total': '2000.00'}, 'lines': [{'number': 1, 'sum': '2000.00'}]}, token=key)   # гостевой счёт: +100
+    log.flush()
+    out = subprocess.run(['java', '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', f'-Ddeya.live.url={BASE}/api/v1/accruals', f'-Ddeya.live.key={key}',
+        '-Ddeya.live.cardplugin=1', '-Ddeya.live.plastic=999000000000006', f'-Ddeya.live.smslog={tmp}/s.log', '-cp', ':'.join(cp), 'ru.deya.loyalty.SelfTest'], capture_output=True, text=True)
+    print(out.stdout.strip(), out.stderr.strip()[-300:])
+    st = req('POST', '/api/v1/pos/card/status', {'card': '999000000000006'}, token=key)
+    print('карта после активации и оплаты баллами:', st)
+    # 100 гостевых − 5 списано кнопкой + 8 (поддельный чек не уменьшает сумму позиции: начисление от 150 ₽; на кассе будет от 145 ₽)
+    card_ok = out.returncode == 0 and st['state'] == 'bound' and st['balance'] == 100 - 5 + 8
+    print('пластик активирован на кассе, списано 5 кнопкой (один раз), начислено 8:', 'ДА' if card_ok else 'НЕТ')
+    ok = ok and card_ok
 finally:
     srv.send_signal(signal.SIGTERM)
     try: srv.wait(5)

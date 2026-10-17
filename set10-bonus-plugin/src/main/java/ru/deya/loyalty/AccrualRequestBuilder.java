@@ -1,5 +1,6 @@
 package ru.deya.loyalty;
 
+import ru.crystals.pos.spi.receipt.AppliedDiscount;
 import ru.crystals.pos.spi.receipt.Card;
 import ru.crystals.pos.spi.receipt.CardType;
 import ru.crystals.pos.spi.receipt.LineItem;
@@ -15,6 +16,7 @@ import java.net.InetAddress;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,6 +50,20 @@ final class AccrualRequestBuilder {
         }
     }
 
+    /** Списание баллов, реально применённое нашим плагином в этом чеке (из результатов doDiscount). */
+    static final class Redemption {
+        final String ref;
+        final int points;
+        /** Номер позиции → скидка списанием на ней. */
+        final Map<Integer, BigDecimal> lineDiscounts;
+
+        Redemption(String ref, int points, Map<Integer, BigDecimal> lineDiscounts) {
+            this.ref = ref;
+            this.points = points;
+            this.lineDiscounts = lineDiscounts == null ? Collections.<Integer, BigDecimal>emptyMap() : lineDiscounts;
+        }
+    }
+
     interface Getter<T> {
         T get() throws Exception;
     }
@@ -67,6 +83,13 @@ final class AccrualRequestBuilder {
      * @return запрос или null, если чек не нужно отправлять (нет карты приложения, возврат отключён и т.п.)
      */
     static Request build(Receipt receipt, PluginSettings cfg) {
+        return build(receipt, cfg, null);
+    }
+
+    /**
+     * @param redemption списание баллов в этом чеке (null — не было); сервер подтверждает его вместе с начислением
+     */
+    static Request build(Receipt receipt, PluginSettings cfg, Redemption redemption) {
         if (receipt == null) {
             return null;
         }
@@ -108,7 +131,14 @@ final class AccrualRequestBuilder {
             root.put("originalReceipt", receiptInfo(saleReceipt, saleRegister, idempotencyKey(saleReceipt, saleRegister)));
         }
         root.put("payments", payments(receipt));
-        root.put("lines", lines(receipt));
+        Map<Integer, BigDecimal> own = !refund && redemption != null ? redemption.lineDiscounts : null;
+        root.put("lines", lines(receipt, own));
+        if (!refund && redemption != null && redemption.points > 0) {
+            Map<String, Object> red = new LinkedHashMap<>();
+            red.put("ref", redemption.ref);
+            red.put("points", redemption.points);
+            root.put("redemption", red);
+        }
 
         return new Request(key, Json.toJson(root), card == null ? null : mask(card.getCardNumber()));
     }
@@ -161,6 +191,7 @@ final class AccrualRequestBuilder {
     private static Map<String, Object> receiptInfo(Receipt r, String registerId, String key) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("key", key);
+        m.put("ref", receiptRef(r, registerId));
         m.put("registerId", registerId);
         m.put("number", r.getNumber());
         m.put("shiftNo", r.getShiftNo());
@@ -196,7 +227,13 @@ final class AccrualRequestBuilder {
         return res;
     }
 
-    private static List<Object> lines(Receipt r) {
+    /**
+     * Позиции чека. Для каждой: сумма после всех скидок, скидка, применённые акции Set10 (по ним сервер узнаёт «цену 3»),
+     * признаки «можно начислять/списывать бонусы», минимальная сумма позиции.
+     *
+     * @param own скидка нашего плагина (списание баллов) по номерам позиций; null — не было
+     */
+    static List<Object> lines(Receipt r, Map<Integer, BigDecimal> own) {
         List<Object> res = new ArrayList<>();
         List<LineItem> items = r.getLineItems();
         if (items == null) {
@@ -222,12 +259,60 @@ final class AccrualRequestBuilder {
             m.put("discount", money(li.getDiscountValue()));
             Boolean accrueAllowed = safe(li::isAccrueBonusAllowed);
             m.put("accrueAllowed", accrueAllowed == null ? Boolean.TRUE : accrueAllowed);
+            Boolean payAllowed = safe(li::isPayBonusAllowed);
+            m.put("payBonusAllowed", payAllowed == null ? Boolean.TRUE : payAllowed);
+            BigDecimal minPrice = safe(li::getMinPrice);
+            if (minPrice != null && minPrice.signum() > 0) {
+                m.put("minSum", money(minPrice.multiply(new BigDecimal(li.getQuantity()).movePointLeft(3))));
+            }
+            List<Object> applied = appliedDiscounts(li);
+            if (!applied.isEmpty()) {
+                m.put("discounts", applied);
+            }
+            BigDecimal mine = own == null ? null : own.get(li.getNumber());
+            if (mine != null) {
+                m.put("ownDiscount", money(mine));
+            }
+            res.add(m);
+        }
+        return res;
+    }
+
+    private static List<Object> appliedDiscounts(LineItem li) {
+        List<Object> res = new ArrayList<>();
+        Collection<AppliedDiscount> list = safe(li::getAppliedDiscounts);
+        if (list == null) {
+            return res;
+        }
+        for (AppliedDiscount d : list) {
+            if (d == null) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", safe(d::getDiscountId));
+            m.put("guid", safe(d::getAdvertisingActionGuid));
+            m.put("amount", money(safe(d::getAmount)));
             res.add(m);
         }
         return res;
     }
 
     // ------------------------------------------------------------------ идентификаторы
+
+    /**
+     * Ссылка на чек, известная уже на подытоге (до фискализации): касса + смена + время создания чека (мс).
+     * Номер чека сюда НЕ входит: по документации Crystals номер на расчёте скидок может отличаться от номера
+     * при фискализации (если между ними печатались X-отчёт, копия чека и т.п.).
+     * По ref сервер связывает резерв/списание баллов (doDiscount, writeOff) с пробитым чеком.
+     */
+    static String receiptRef(Receipt r, String registerId) {
+        Date created = r.getDateCreate();
+        return "ref:" + registerId + ":" + r.getShiftNo() + ":" + (created == null ? 0L : created.getTime());
+    }
+
+    static String receiptRef(Receipt r) {
+        return receiptRef(r, registerId(r));
+    }
 
     /**
      * Идентификатор кассы: номер ФН (если касса его отдаёт), иначе заводской номер ФР, иначе имя компьютера.

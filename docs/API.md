@@ -25,6 +25,29 @@
 База: сумма `lines[].sum` по строкам, где `accrueAllowed ≠ false`; если `lines` пусты, то `receipt.total`.
 Возврат (`operation: "REFUND"`): ищется исходное начисление по `originalReceipt.key`; если не найдено, ответ `200` с `accrued: 0, note: "original_not_found"`.
 
+## Списание в чеке гипермаркета (плагин Set10)
+
+| Метод | Тело | Ответ |
+|---|---|---|
+| `POST /api/v1/pos/redeem/reserve` | `{ref, card:{number}, lines:[{number, sum, discount, discounts, payBonusAllowed, minSum}]}` | `{holdId, points, discount, lines:[{number, discount}]}` или `{points:0, reason}` (`not_opted_in`, `point_no_redeem`, `card_not_bound`, `no_balance`, `nothing_eligible`, `unknown_card`). Повтор с тем же `ref` обновляет резерв |
+| `POST /api/v1/pos/redeem/cancel` | `{ref}` | `{cancelled}` |
+| `POST /api/v1/accruals` с `redemption:{ref, points}` | | списание подтверждается вместе с начислением (`redeemed` в ответе); без `redemption`, но с `receipt.ref` — висящий резерв снимается |
+
+Лимит = сумма позиций с `payBonusAllowed≠false` и без скидки Set10 (если не разрешено в настройках) × «Макс. оплата баллами, %» точки; не больше доступных баллов; только если клиент включил `autoRedeem`.
+
+## Касса: карта, телефон, активация пластика, кнопка «оплатить бонусами» (плагин карт)
+
+| Метод | Тело | Ответ |
+|---|---|---|
+| `POST /api/v1/pos/card/status` | `{card}` | `{known, card, kind, state: free\|guest\|bound\|blocked\|closed, profileId, name, phone (маска), balance, available}` |
+| `POST /api/v1/pos/card/by-phone` | `{phone}` | то же для карты профиля (пластик, иначе виртуальная); `404`, если нет |
+| `POST /api/v1/pos/activate/start` | `{card, phone}` | СМС с кодом покупателю; `{sent, existingProfile, replaces: "****1234"\|null}` |
+| `POST /api/v1/pos/activate/confirm` | `{card, phone, code}` | `{profileId, transferred, replaced, balance}`; согласия пишутся с каналом `pos_sms` |
+| `POST /api/v1/pos/redeem/quote` | `{card, lines}` | потолок `{maxPoints, balance, available, profileId}` (без резерва) |
+| `POST /api/v1/pos/redeem/reserve` | + `mode: "cashier", points` | резерв суммы кассира (согласие в приложении не нужно) |
+| `POST /api/v1/pos/redeem/writeoff` | `{ref, card, points}` | списание по резерву сразу (`txId`) |
+| `POST /api/v1/pos/redeem/rollback` | `{txId}` | откат списания (`REVERSED`) или снятие резерва |
+
 ## Списание (точки трат)
 
 Все методы с ключом точки; `card` — номер карты, либо `phone` вместо него.
@@ -33,7 +56,7 @@
 |---|---|---|
 | `POST /api/v1/redeem/quote` | `{card, checkTotal}` | `{available, maxPoints, maxDiscount}` |
 | `POST /api/v1/redeem/hold` | `{card, checkTotal, points, idempotencyKey}` | `201 {holdId, points, discount, expiresAt}`; `422 over_limit` если больше лимита; повтор с тем же ключом отдаёт тот же резерв |
-| `POST /api/v1/redeem/:holdId/commit` | — | `{status:"COMMITTED", balance}`; `410` если резерв истёк |
+| `POST /api/v1/redeem/:holdId/commit` | `{code}` — если у точки включён «Код подтверждения» | `{status:"COMMITTED", balance}`; `410` если резерв истёк; `400 confirm_required / wrong_code`; `409 confirm_failed` после 5 ошибок (резерв отменён) |
 | `POST /api/v1/redeem/:holdId/cancel` | — | `{status:"CANCELLED"}` |
 | `POST /api/v1/redeem/:holdId/reverse` | — | вернуть баллы после подтверждённого списания |
 
@@ -49,14 +72,20 @@
 | Метод | Назначение |
 |---|---|
 | `POST /api/auth/request-code` `{phone}` | отправить код (4 цифры) |
-| `POST /api/auth/verify` `{phone, code, consent}` | вход; `consent:true` обязателен при первой регистрации. Ответ `{token, isNew}` |
+| `POST /api/auth/verify` `{phone, code, consents:{pd, rules, marketing}}` | вход; `pd` и `rules` обязательны при первой регистрации (`consent:true` = оба, для старых клиентов). Согласия пишутся в журнал с версией документов. Ответ `{token, isNew}` |
+| `GET /api/legal` | ссылки на документы и их версия |
 | `POST /api/auth/logout` | выход |
-| `GET /api/me` | баланс, карта, QR (`qr.value`), последняя операция (`last`) |
+| `GET /api/me` | баланс, карта (`null`, если пул пуст — выдаётся при следующем запросе), `physicalCards`, QR, `settings {autoRedeem, marketing}`, `pending` (коды подтверждения списаний), последняя операция |
 | `GET /api/me/history?limit=&before=` | журнал |
-| `PATCH /api/me` `{name}` | имя |
+| `PATCH /api/me` `{name?, autoRedeem?, marketing?}` | имя; списание в гипермаркете; согласие на рассылки (пишется в журнал) |
+| `POST /api/me/cards/bind` `{number, code, replace?}` | привязать пластиковую карту (баллы переносятся); вторая — только `replace:true`, старая блокируется |
+| `POST /api/me/phone/request` `{phone}` → `POST /api/me/phone/confirm` `{phone, code}` | смена номера: код на новый номер; ID профиля, баллы и карты не меняются |
 | `DELETE /api/me` | удалить аккаунт |
 | `GET /api/points` | публичные проценты: места трат и начисления |
 
 ## Администратор
 
-`GET/POST /api/admin/points`, `PATCH /api/admin/points/:id` (`accrualPct`, `redeemPct`, `active`, `name`, `kind`), `POST /api/admin/points/:id/rotate-key`, `PUT /api/admin/settings` (`rub_per_point`, `rounding`), `GET /api/admin/users?q=`, `GET /api/admin/users/:id`, `POST /api/admin/users/:id/adjust` `{points, reason}`, `GET /api/admin/cards.csv`, `GET /api/admin/stats`, `GET /api/admin/audit`.
+`GET/POST /api/admin/points`, `PATCH /api/admin/points/:id` (`accrualPct`, `redeemPct`, `active`, `name`, `kind`, `confirmRedeem`),
+`GET /api/admin/users/:id` (карточка для поддержки: карты, согласия, журнал), `POST /api/admin/users/:id/phone` `{phone, reason}`, `POST /api/admin/users/:id/merge` `{from: ID профиля, reason}`, `POST /api/admin/cards/:number/block` `{blocked, reason}`, `POST /api/admin/cards/:number/unbind`,
+`GET /api/admin/cards/pool`, `POST /api/admin/cards/import` (`{kind: virtual|physical, text: "номер[;код]\n…"}` или `{kind, range:{from,to}}`), `GET /api/admin/metrics?days=30`,
+`PUT /api/admin/settings` также `accrue_on_discounted`, `redeem_on_discounted`, `price3_action_ids`, `POST /api/admin/points/:id/rotate-key`, `PUT /api/admin/settings` (`rub_per_point`, `rounding`), `GET /api/admin/users?q=`, `GET /api/admin/users/:id`, `POST /api/admin/users/:id/adjust` `{points, reason}`, `GET /api/admin/cards.csv`, `GET /api/admin/stats`, `GET /api/admin/audit`.

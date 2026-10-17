@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
 <properties>
-    <entry key="bonus.service.name">Начисление бонусов (ТРЦ Дея)</entry>
-    <entry key="plugin.name">Начисление бонусов (ТРЦ Дея)</entry>
+    <entry key="bonus.service.name">Бонусы ТРЦ Дея</entry>
+    <entry key="plugin.name">Бонусы ТРЦ Дея</entry>
 
     <entry key="enabled.description">Плагин включён (снимите флажок, чтобы временно прекратить отправку чеков)</entry>
     <entry key="server.url.description">Адрес сервера лояльности для начисления (полный URL, например https://loyalty.example.ru/api/v1/accruals)</entry>
@@ -13,4 +13,17 @@
     <entry key="read.timeout.description">Таймаут ожидания ответа сервера, мс</entry>
     <entry key="send.refunds.description">Отправлять на сервер чеки возврата (для отмены начисленных баллов)</entry>
     <entry key="max.attempts.description">Сколько раз повторять отправку при ошибке сервера (сбои связи не считаются)</entry>
+    <entry key="redeem.enabled.description">Списание баллов скидкой на подытоге (включать после проверки начисления)</entry>
+    <entry key="redeem.url.description">Адрес списания (пусто = вычисляется из адреса сервера: …/api/v1/pos/redeem)</entry>
+    <entry key="redeem.timeout.description">Таймаут ответа сервера на подытоге, мс (при превышении чек без списания)</entry>
+    <entry key="redeem.discount.type.description">Тип скидки списания: SUM (обычная скидка) или BONUSES (скидка бонусами)</entry>
+    <entry key="log.payload.description">Писать в лог кассы JSON запросов (только для тестирования)</entry>
+    <entry key="card.plugin.name">Карты ДЕЯ</entry>
+    <entry key="redeem.mode.description">Способ списания: auto (сам, по согласию клиента в приложении), cashier (кнопкой кассира «оплатить бонусами»), both</entry>
+    <entry key="card.mode.description">Режим карт: internal (карты Set10, «цена 3» штатно) или external (плагин отдаёт баланс кассе — кнопка «оплатить бонусами»)</entry>
+    <entry key="card.activation.description">Предлагать активацию неактивированной пластиковой карты по телефону и СМС-коду</entry>
+    <entry key="card.phone.search.description">Поиск карты по номеру телефона покупателя</entry>
+    <entry key="card.category.guid.description">GUID категории карт для акций Set10 (режим external, если нужно)</entry>
+    <entry key="card.info.search.description">«Инфо по карте»: передавать плагину карту, найденную кассой (в т.ч. внутреннюю карту Set10)</entry>
+    <entry key="card.info.receipt.description">«Инфо по карте»: брать карту из текущего чека</entry>
 </properties>
