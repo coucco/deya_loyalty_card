@@ -81,6 +81,8 @@
 | `card.phone.search` | — | да | да | поиск клиента по телефону |
 | `card.category.guid` | Set10 (GUID категории карт) | пусто | только если «цена 3» в `external` вешается на категорию | |
 | `log.payload` | — | **да** | нет | JSON запросов в логе кассы |
+| `log.trace` | — | **да** | нет | строка на каждый вызов метода плагина: что пришло, чем закончилось |
+| `log.file.enabled`, `log.file` | — | да, пусто | да, пусто | свой файл журнала: по умолчанию `<папка плагинов>/deya-logs/deya-plugin.log` |
 | `redeem.discount.type` | бухгалтерия / ОФД | `SUM` | `SUM` или `BONUSES` | тип скидки списания в чеке |
 | `connection.timeout`, `read.timeout`, `redeem.timeout`, `max.attempts`, `send.refunds`, `redeem.url`, `card.config.card.info.*` | — | по умолчанию | по умолчанию | таймауты, повторы, возвраты, «Инфо по карте» |
 

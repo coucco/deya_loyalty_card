@@ -86,6 +86,7 @@ public class SelfTest {
         testRedeem();
         testRedeemByCashier();
         testCardPlugin();
+        testTraceAndFileLog();
 
         System.out.println("Проверок выполнено: " + checks + ", ошибок: " + failures.size());
         for (String f : failures) {
@@ -502,6 +503,51 @@ public class SelfTest {
         } finally {
             srv.stop();
         }
+    }
+
+    /** log.trace + свой файл журнала: видно, какие методы касса вызвала и чем закончилось; ротация файла. */
+    static void testTraceAndFileLog() throws Exception {
+        java.io.File dir = java.nio.file.Files.createTempDirectory("deya-log").toFile();
+        java.io.File file = new java.io.File(dir, "deya-plugin.log");
+        Map<String, String> m = new HashMap<>();
+        m.put(PluginSettings.KEY_SERVER_URL, "http://127.0.0.1:" + freePort() + "/api/v1/accruals");
+        m.put(PluginSettings.KEY_CONNECTION_TIMEOUT, "300");
+        m.put(PluginSettings.KEY_LOG_TRACE, "true");
+        m.put(PluginSettings.KEY_LOG_FILE, file.getPath());
+        m.put(PluginSettings.KEY_CARD_PREFIX, "2000");
+        BonusAccrualPlugin lp = plugin(m);
+        Receipt r = saleReceipt(card("2000000000017", CardType.INTERNAL), true);
+        lp.doDiscount(r);
+        lp.cancelDiscount(r, null);
+        lp.eventReceiptFiscalized(saleReceipt(null, true), null);
+        LoyProviderFeedback q = lp.eventReceiptFiscalized(r, null);
+        lp.onSendFeedback(q);
+        AtomicInteger cb = new AtomicInteger();
+        cardPlugin(m, null).cardSearchFinished(finishedReq(card("2000000000017", CardType.INTERNAL), cb));
+        cardPlugin(m, null).searchCard(searchReq("2000000000017", CardSearchEventSource.BARCODE));
+        String text = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+        for (String must : new String[]{"вызван doDiscount", "вызван cancelDiscount", "вызван eventReceiptFiscalized", "нет карты ДЕЯ",
+                "в очередь кассы", "вызван onSendFeedback", "нет связи, повтор позже", "вызван cardSearchFinished", "вызван searchCard", "Нет связи с сервером лояльности"}) {
+            check(text.contains(must), "журнал в файле содержит «" + must + "»");
+        }
+        check(text.contains("****0017") && !text.contains("2000000000017"), "в журнале номера карт замаскированы");
+        // без трассировки: обычные сообщения пишутся, строки «вызван» — нет
+        java.io.File plain = new java.io.File(dir, "plain.log");
+        Map<String, String> m2 = new HashMap<>(m);
+        m2.put(PluginSettings.KEY_LOG_TRACE, "false");
+        m2.put(PluginSettings.KEY_LOG_FILE, plain.getPath());
+        plugin(m2).eventReceiptFiscalized(r, null);
+        String t2 = new String(java.nio.file.Files.readAllBytes(plain.toPath()), StandardCharsets.UTF_8);
+        check(!t2.contains("вызван") && t2.contains("Нет связи"), "log.trace=false: только обычные сообщения");
+        // ротация: при переполнении файл уходит в .1, старые сдвигаются
+        java.io.File rot = new java.io.File(dir, "rot.log");
+        java.nio.file.Files.write(rot.toPath(), "a".getBytes(StandardCharsets.UTF_8));
+        java.nio.file.Files.write(new java.io.File(dir, "rot.log.1").toPath(), "b".getBytes(StandardCharsets.UTF_8));
+        PluginLog.rotate(rot);
+        check(!rot.exists() && "a".equals(new String(java.nio.file.Files.readAllBytes(new java.io.File(dir, "rot.log.1").toPath()), StandardCharsets.UTF_8))
+                && new java.io.File(dir, "rot.log.2").exists(), "ротация файла журнала");
+        check("x=1 y={}".equals(PluginLog.format("x={} y={}", new Object[]{1})) && PluginLog.format("e", new Object[]{new RuntimeException("boom")}).contains("boom"),
+                "формат сообщений как в slf4j");
     }
 
     static DeyaCardPlugin cardPlugin(Map<String, String> values, UIForms ui) {

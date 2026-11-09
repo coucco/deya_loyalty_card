@@ -26,6 +26,9 @@ class PluginSettings {
     static final String KEY_REDEEM_TIMEOUT = "redeem.timeout";
     static final String KEY_REDEEM_DISCOUNT_TYPE = "redeem.discount.type";
     static final String KEY_LOG_PAYLOAD = "log.payload";
+    static final String KEY_LOG_TRACE = "log.trace";
+    static final String KEY_LOG_FILE = "log.file";
+    static final String KEY_LOG_FILE_ENABLED = "log.file.enabled";
     static final String KEY_REDEEM_MODE = "redeem.mode";
     static final String KEY_CARD_MODE = "card.mode";
     static final String KEY_CARD_ACTIVATION = "card.activation";
@@ -196,6 +199,21 @@ class PluginSettings {
     boolean redeemAsBonusesDiscount() {
         String v = str(KEY_REDEEM_DISCOUNT_TYPE);
         return v != null && v.equalsIgnoreCase("BONUSES");
+    }
+
+    /** Трассировка: каждый вызов метода плагина пишется в журнал с кратким содержанием чека и результатом. */
+    boolean logTrace() {
+        return reader().getBoolean(KEY_LOG_TRACE, false);
+    }
+
+    /** Дублировать журнал плагина в свой файл (по умолчанию да). */
+    boolean logFileEnabled() {
+        return reader().getBoolean(KEY_LOG_FILE_ENABLED, true);
+    }
+
+    /** Путь к файлу журнала; пусто — {@code <папка плагина>/deya-logs/deya-plugin.log}. */
+    String logFile() {
+        return str(KEY_LOG_FILE);
     }
 
     /** Писать в лог кассы JSON запроса (для этапа тестирования; номер карты в нём не маскируется). */
