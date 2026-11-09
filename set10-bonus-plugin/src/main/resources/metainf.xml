@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<SetIntegration set10-api-version="0.0.3" version="1.2.1" xmlns="http://crystals.ru/set10/api/metainf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://crystals.ru/set10/api/metainf metainf.xsd ">
+<SetIntegration set10-api-version="0.0.3" version="1.2.2" xmlns="http://crystals.ru/set10/api/metainf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://crystals.ru/set10/api/metainf metainf.xsd ">
     <ExternalService serviceType="LOYALTY" localeKey="bonus.service.name" id="ext.deya.bonus.accrual">
         <Options>
             <Boolean key="enabled" localeKey="enabled.description" default-value="true"/>

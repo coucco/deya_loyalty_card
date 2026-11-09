@@ -115,7 +115,7 @@ class PluginSettings {
      * Лимит (% чека), исключения («цена 3») и согласие клиента решает сервер; плагин только применяет присланную скидку.
      */
     boolean redeemEnabled() {
-        return reader().getBoolean(KEY_REDEEM_ENABLED, false);
+        return isEnabled() && reader().getBoolean(KEY_REDEEM_ENABLED, false);   // enabled=false выключает и списание
     }
 
     /**

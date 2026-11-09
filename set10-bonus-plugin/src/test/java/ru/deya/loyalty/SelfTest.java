@@ -87,6 +87,7 @@ public class SelfTest {
         testRedeemByCashier();
         testCardPlugin();
         testTraceAndFileLog();
+        testKillSwitch();
 
         System.out.println("Проверок выполнено: " + checks + ", ошибок: " + failures.size());
         for (String f : failures) {
@@ -548,6 +549,34 @@ public class SelfTest {
                 && new java.io.File(dir, "rot.log.2").exists(), "ротация файла журнала");
         check("x=1 y={}".equals(PluginLog.format("x={} y={}", new Object[]{1})) && PluginLog.format("e", new Object[]{new RuntimeException("boom")}).contains("boom"),
                 "формат сообщений как в slf4j");
+    }
+
+    /** enabled=false — аварийный выключатель: ни начисления, ни списания, ни активации, ни поиска, ни инфо по карте; без запросов на сервер. */
+    static void testKillSwitch() throws Exception {
+        TestServer srv = new TestServer();
+        try {
+            Map<String, String> m = new HashMap<>();
+            m.put(PluginSettings.KEY_SERVER_URL, srv.url());
+            m.put(PluginSettings.KEY_ENABLED, "false");
+            m.put(PluginSettings.KEY_REDEEM_ENABLED, "true");
+            m.put(PluginSettings.KEY_CARD_MODE, "external");
+            srv.body.set("{\"points\":50,\"discount\":\"50.00\",\"lines\":[{\"number\":1,\"discount\":\"50.00\"}]}");
+            int before = srv.requests.get();
+            Receipt r = saleReceipt(card("2000000000017", CardType.INTERNAL), true);
+            BonusAccrualPlugin lp = plugin(m);
+            check(lp.doDiscount(r).getDiscounts().isEmpty(), "enabled=false: на подытоге без списания");
+            lp.cancelDiscount(r, null);
+            check(lp.eventReceiptFiscalized(r, null) == null, "enabled=false: чек не отправляется");
+            DeyaCardPlugin cp = cardPlugin(m, scriptedUi(new CopyOnWriteArrayList<>(), "x", "y"));
+            check(cp.searchCard(searchReq("2000000000017", CardSearchEventSource.BARCODE)).getResponseStatus() == CardSearchResponseStatus.UNKNOWN_CARD, "enabled=false: карты ищет Set10");
+            AtomicInteger cb = new AtomicInteger();
+            cp.cardSearchFinished(finishedReq(card("2000000000017", CardType.INTERNAL), cb));
+            check(cb.get() == 1, "enabled=false: активация не предлагается, касса продолжает");
+            check(cp.getCardInfo(searchReq("2000000000017", CardSearchEventSource.NUMBER)).getCardSearchStatus() == CardSearchResponseStatus.UNKNOWN_CARD, "enabled=false: инфо по карте отдаётся Set10");
+            check(srv.requests.get() == before, "enabled=false: ни одного запроса на сервер");
+        } finally {
+            srv.stop();
+        }
     }
 
     static DeyaCardPlugin cardPlugin(Map<String, String> values, UIForms ui) {

@@ -306,7 +306,7 @@ public class DeyaCardPlugin implements CardPlugin {
             PluginSettings cfg = settings();
             Card card = AccrualRequestBuilder.safe(request::getCard);
             String number = card != null ? card.getCardNumber() : numberFrom(request.getCardSearchRequest());
-            if (number == null || !ours(cfg, number)) {
+            if (!cfg.isEnabled() || number == null || !ours(cfg, number)) {
                 return new CardInfo(CardSearchResponseStatus.UNKNOWN_CARD, null);
             }
             ServerApi.Answer st = api().post(cfg, "/pos/card/status", map("card", number), cfg.redeemTimeoutMs());
