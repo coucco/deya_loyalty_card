@@ -37,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Плагин карт «ДЕЯ» (в том же jar и с теми же настройками, что и плагин лояльности).
@@ -68,11 +69,30 @@ public class DeyaCardPlugin implements CardPlugin {
     UIForms ui;
 
     private volatile ServerApi api;
+    private volatile PluginLog plog;
+
+    /** Журнал: лог кассы + свой файл (см. {@link PluginLog}). */
+    PluginLog log() {
+        PluginLog l = plog;
+        if (l == null) {
+            l = new PluginLog(log, this::settings);
+            plog = l;
+        }
+        return l;
+    }
 
     // ------------------------------------------------------------------ поиск карты
 
     @Override
     public CardSearchResponse searchCard(CardSearchRequest request) {
+        CardSearchResponse r = searchCardImpl(request);
+        log().trace("вызван searchCard ({}): карта {} → {}{}", request == null ? null : AccrualRequestBuilder.safe(request::getEventSource),
+                request == null ? null : mask(numberFrom(request)), r.getResponseStatus(),
+                r.getResponseStatus() == CardSearchResponseStatus.UNKNOWN_CARD ? " (карту ищет Set10: режим internal или не карта ДЕЯ)" : "");
+        return r;
+    }
+
+    private CardSearchResponse searchCardImpl(CardSearchRequest request) {
         try {
             PluginSettings cfg = settings();
             if (!cfg.isEnabled() || !cfg.cardExternal() || request == null) {
@@ -87,7 +107,7 @@ public class DeyaCardPlugin implements CardPlugin {
                 st = api().post(cfg, "/pos/card/status", map("card", number), cfg.redeemTimeoutMs());
             } catch (IOException e) {
                 // без сервера карта всё равно должна работать: «цена 3» и отложенное начисление
-                log.warn("Поиск карты {}: нет связи с сервером ({}), карта без баланса", mask(number), e.toString());
+                log().warn("Поиск карты {}: нет связи с сервером ({}), карта без баланса", mask(number), e.toString());
                 CardSearchResponse r = new CardSearchResponse(CardSearchResponseStatus.OK, entity(cfg, number, null, request.getEventSource()));
                 r.addCashierMessage("Баллы ДЕЯ: баланс сейчас недоступен (нет связи)");
                 return r;
@@ -104,14 +124,19 @@ public class DeyaCardPlugin implements CardPlugin {
             }
             return r;
         } catch (Exception | LinkageError e) {
-            log.error("Ошибка плагина карт при поиске карты", e);
+            log().error("Ошибка плагина карт при поиске карты", e);
             return new CardSearchResponse(CardSearchResponseStatus.UNKNOWN_CARD);
         }
     }
 
     /** Поиск по телефону — в отдельном потоке (касса ждёт callback). Остальные источники — как {@link #searchCard}. */
     @Override
-    public void searchCardAsync(CardSearchRequest request, CardSearchCallback callback) {
+    public void searchCardAsync(CardSearchRequest request, CardSearchCallback cashCallback) {
+        final CardSearchCallback callback = res -> {
+            log().trace("вызван searchCardAsync ({}) → {}{}", request == null ? null : AccrualRequestBuilder.safe(request::getEventSource),
+                    res == null ? null : res.getResponseStatus(), res != null && res.getCard() != null ? ", карта " + mask(res.getCard().getCardNumber()) : "");
+            cashCallback.onCardSearchCompleted(res);
+        };
         if (request == null || request.getEventSource() != CardSearchEventSource.PHONE_NUMBER) {
             callback.onCardSearchCompleted(searchCard(request));
             return;
@@ -134,7 +159,7 @@ public class DeyaCardPlugin implements CardPlugin {
             } catch (IOException e) {
                 res = new CardSearchResponse(CardSearchResponseStatus.OFFLINE);
             } catch (Exception | LinkageError e) {
-                log.error("Ошибка поиска карты по телефону", e);
+                log().error("Ошибка поиска карты по телефону", e);
                 res = new CardSearchResponse(CardSearchResponseStatus.ERROR);
             }
             callback.onCardSearchCompleted(res);
@@ -146,24 +171,28 @@ public class DeyaCardPlugin implements CardPlugin {
     @Override
     public void cardSearchFinished(CardSearchFinishedRequest request) {
         final AtomicBoolean done = new AtomicBoolean(false);
-        final Runnable finish = () -> {
+        final Card foundCard = AccrualRequestBuilder.safe(() -> request.getFoundCard().orElse(null));
+        final Consumer<String> finish = outcome -> {
             if (done.compareAndSet(false, true)) {
+                log().trace("вызван cardSearchFinished (карта найдена): {} → {}",
+                        foundCard == null ? "карты нет" : mask(foundCard.getCardNumber()) + " " + AccrualRequestBuilder.safe(foundCard::getCardType), outcome);
                 request.getCallback().onCardSearchFinishedCompleted(new CardSearchFinishedResponse());
             }
         };
         try {
             PluginSettings cfg = settings();
-            Card found = request.getFoundCard().orElse(null);
+            Card found = foundCard;
             if (!cfg.isEnabled() || !cfg.cardActivation() || found == null || found.getCardNumber() == null
                     || !ours(cfg, found.getCardNumber()) || ui == null) {
-                finish.run();
+                finish.accept(found == null ? "нечего делать: карта не найдена" : !cfg.isEnabled() || !cfg.cardActivation()
+                        ? "активация выключена (enabled/card.activation)" : ui == null ? "нет форм кассы (UIForms)" : "не карта ДЕЯ (card.prefix)");
                 return;
             }
             final String number = found.getCardNumber();
             ServerApi.Answer st = api().post(cfg, "/pos/card/status", map("card", number), cfg.redeemTimeoutMs());
             String state = st.ok() ? st.str("state") : null;
             if (!"physical".equals(st.str("kind")) || !("free".equals(state) || "guest".equals(state))) {
-                finish.run();
+                finish.accept("активация не нужна: " + st.str("kind") + ", состояние " + (st.ok() ? state : "HTTP " + st.status));
                 return;
             }
             DialogFormParameters p = new DialogFormParameters(
@@ -178,21 +207,21 @@ public class DeyaCardPlugin implements CardPlugin {
 
                 @Override
                 public void eventButton2pressed() {
-                    finish.run();
+                    finish.accept("кассир выбрал «Позже»");
                 }
 
                 @Override
                 public void eventCanceled() {
-                    finish.run();
+                    finish.accept("кассир закрыл окно активации");
                 }
             });
         } catch (Exception | LinkageError e) {
-            log.warn("Активация карты не предложена: {}", e.toString());
-            finish.run();
+            log().warn("Активация карты не предложена: {}", e.toString());
+            finish.accept("ошибка/нет связи: " + e);
         }
     }
 
-    private void askPhone(PluginSettings cfg, String number, Runnable finish) {
+    private void askPhone(PluginSettings cfg, String number, Consumer<String> finish) {
         ui.getInputForms().showInputNumberForm("Активация карты ДЕЯ", "Телефон покупателя (10 цифр после +7)", "9XXXXXXXXX", 11, new InputListener() {
             @Override
             public void eventInputComplete(String phone) {
@@ -213,12 +242,12 @@ public class DeyaCardPlugin implements CardPlugin {
 
             @Override
             public void eventCanceled() {
-                finish.run();
+                finish.accept("кассир отменил ввод телефона");
             }
         });
     }
 
-    private void askCode(PluginSettings cfg, String number, String phone, String note, Runnable finish) {
+    private void askCode(PluginSettings cfg, String number, String phone, String note, Consumer<String> finish) {
         ui.getInputForms().showInputNumberForm("Код из СМС", "Покупатель получил СМС с кодом." + note, "0000", 4, new InputListener() {
             @Override
             public void eventInputComplete(String code) {
@@ -231,11 +260,11 @@ public class DeyaCardPlugin implements CardPlugin {
                         error(a.message(), finish);
                         return;
                     }
-                    log.info("Карта {} активирована, профиль {}", mask(number), a.str("profileId"));
+                    log().info("Карта {} активирована, профиль {}", mask(number), a.str("profileId"));
                     ui.showMessageForm("Карта активирована. Профиль " + a.str("profileId") + ", баллов: " + a.num("balance"), new ConfirmListener() {
                         @Override
                         public void eventConfirmed() {
-                            finish.run();
+                            finish.accept("карта активирована, профиль " + a.str("profileId"));
                         }
                     });
                 } catch (Exception | LinkageError e) {
@@ -245,21 +274,21 @@ public class DeyaCardPlugin implements CardPlugin {
 
             @Override
             public void eventCanceled() {
-                finish.run();
+                finish.accept("кассир отменил ввод кода");
             }
         });
     }
 
-    private void error(String text, Runnable finish) {
+    private void error(String text, Consumer<String> finish) {
         try {
             ui.showErrorForm(text, new ConfirmListener() {
                 @Override
                 public void eventConfirmed() {
-                    finish.run();
+                    finish.accept("ошибка показана кассиру: " + text);
                 }
             });
         } catch (Exception | LinkageError e) {
-            finish.run();
+            finish.accept("ошибка: " + text);
         }
     }
 
@@ -267,11 +296,17 @@ public class DeyaCardPlugin implements CardPlugin {
 
     @Override
     public CardInfo getCardInfo(CardInfoRequest request) {
+        CardInfo ci = getCardInfoImpl(request);
+        log().trace("вызван getCardInfo («Инфо по карте») → {} {}", ci.getCardSearchStatus(), ci.getInfo());
+        return ci;
+    }
+
+    private CardInfo getCardInfoImpl(CardInfoRequest request) {
         try {
             PluginSettings cfg = settings();
             Card card = AccrualRequestBuilder.safe(request::getCard);
             String number = card != null ? card.getCardNumber() : numberFrom(request.getCardSearchRequest());
-            if (number == null || !ours(cfg, number)) {
+            if (!cfg.isEnabled() || number == null || !ours(cfg, number)) {
                 return new CardInfo(CardSearchResponseStatus.UNKNOWN_CARD, null);
             }
             ServerApi.Answer st = api().post(cfg, "/pos/card/status", map("card", number), cfg.redeemTimeoutMs());
@@ -295,7 +330,7 @@ public class DeyaCardPlugin implements CardPlugin {
         } catch (IOException e) {
             return new CardInfo(CardSearchResponseStatus.OFFLINE, null);
         } catch (Exception | LinkageError e) {
-            log.error("Ошибка получения информации по карте", e);
+            log().error("Ошибка получения информации по карте", e);
             return new CardInfo(CardSearchResponseStatus.ERROR, null);
         }
     }
@@ -325,6 +360,13 @@ public class DeyaCardPlugin implements CardPlugin {
     /** Кассир подтвердил «оплатить бонусами»: списываем зарезервированное на подытоге. */
     @Override
     public BonusWriteOffOperationResponse writeOff(Card bonusCard, BigDecimal bonusesToWriteOff, Receipt receipt) {
+        BonusWriteOffOperationResponse r = writeOffImpl(bonusCard, bonusesToWriteOff, receipt);
+        log().trace("вызван writeOff («оплатить бонусами»): карта {}, баллов {}, {} → {} txId={} {}", bonusCard == null ? null : mask(bonusCard.getCardNumber()),
+                bonusesToWriteOff, PluginLog.receipt(receipt), r.getResponseStatus(), r.getTxId(), r.getOperatorMessage() == null ? "" : r.getOperatorMessage());
+        return r;
+    }
+
+    private BonusWriteOffOperationResponse writeOffImpl(Card bonusCard, BigDecimal bonusesToWriteOff, Receipt receipt) {
         try {
             PluginSettings cfg = settings();
             Map<String, Object> body = map("ref", AccrualRequestBuilder.receiptRef(receipt));
@@ -332,27 +374,33 @@ public class DeyaCardPlugin implements CardPlugin {
             body.put("card", bonusCard == null ? null : bonusCard.getCardNumber());
             ServerApi.Answer a = api().post(cfg, "/pos/redeem/writeoff", body, cfg.redeemTimeoutMs() * 2);
             if (a.ok()) {
-                log.info("Списано {} баллов по карте {}, транзакция {}", a.num("points"), mask(bonusCard.getCardNumber()), a.str("txId"));
+                log().info("Списано {} баллов по карте {}, транзакция {}", a.num("points"), mask(bonusCard.getCardNumber()), a.str("txId"));
                 return new BonusWriteOffOperationResponse(BonusOperationStatus.OK, a.str("txId"), null);
             }
             return new BonusWriteOffOperationResponse(BonusOperationStatus.ERROR, null, a.message());
         } catch (IOException e) {
             return new BonusWriteOffOperationResponse(BonusOperationStatus.TRY_AGAIN, null, "Нет связи с сервером ДЕЯ, повторите");
         } catch (Exception | LinkageError e) {
-            log.error("Ошибка списания баллов", e);
+            log().error("Ошибка списания баллов", e);
             return new BonusWriteOffOperationResponse(BonusOperationStatus.ERROR, null, "Ошибка списания баллов ДЕЯ");
         }
     }
 
     @Override
     public BonusOperationResponse rollback(String txId) {
+        BonusOperationResponse r = rollbackImpl(txId);
+        log().trace("вызван rollback (откат списания): txId={} → {}", txId, r.getResponseStatus());
+        return r;
+    }
+
+    private BonusOperationResponse rollbackImpl(String txId) {
         try {
             ServerApi.Answer a = api().post(settings(), "/pos/redeem/rollback", map("txId", txId), settings().redeemTimeoutMs() * 2);
             return new BonusOperationResponse(a.ok() ? BonusOperationStatus.OK : BonusOperationStatus.ERROR, txId);
         } catch (IOException e) {
             return new BonusOperationResponse(BonusOperationStatus.TRY_AGAIN, txId);
         } catch (Exception | LinkageError e) {
-            log.error("Ошибка отката списания", e);
+            log().error("Ошибка отката списания", e);
             return new BonusOperationResponse(BonusOperationStatus.ERROR, txId);
         }
     }
@@ -470,7 +518,7 @@ public class DeyaCardPlugin implements CardPlugin {
     private ServerApi api() {
         ServerApi a = api;
         if (a == null) {
-            a = new ServerApi(new BonusServerClient(log));
+            a = new ServerApi(new BonusServerClient(log()));
             api = a;
         }
         return a;

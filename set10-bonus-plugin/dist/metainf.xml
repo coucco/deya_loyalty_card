@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<SetIntegration set10-api-version="0.0.3" version="1.2.0" xmlns="http://crystals.ru/set10/api/metainf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://crystals.ru/set10/api/metainf metainf.xsd ">
+<SetIntegration set10-api-version="0.0.3" version="1.2.2" xmlns="http://crystals.ru/set10/api/metainf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://crystals.ru/set10/api/metainf metainf.xsd ">
     <ExternalService serviceType="LOYALTY" localeKey="bonus.service.name" id="ext.deya.bonus.accrual">
         <Options>
             <Boolean key="enabled" localeKey="enabled.description" default-value="true"/>
@@ -23,6 +23,9 @@
             <Boolean key="card.config.card.info.search.card" localeKey="card.info.search.description" default-value="true"/>
             <Boolean key="card.config.card.info.use.receipt" localeKey="card.info.receipt.description" default-value="true"/>
             <Boolean key="log.payload" localeKey="log.payload.description" default-value="false"/>
+            <Boolean key="log.trace" localeKey="log.trace.description" default-value="false"/>
+            <Boolean key="log.file.enabled" localeKey="log.file.enabled.description" default-value="true"/>
+            <String key="log.file" localeKey="log.file.description"/>
         </Options>
         <LoyaltyPlugin localeKey="plugin.name" id="ext.deya.bonus.accrual">
             <Description>Бонусы ТРЦ Дея: передаёт пробитый чек на сервер лояльности (начисление); по настройке — списание баллов скидкой.</Description>

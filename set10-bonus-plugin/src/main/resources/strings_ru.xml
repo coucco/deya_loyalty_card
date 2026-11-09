@@ -26,4 +26,7 @@
     <entry key="card.category.guid.description">GUID категории карт для акций Set10 (режим external, если нужно)</entry>
     <entry key="card.info.search.description">«Инфо по карте»: передавать плагину карту, найденную кассой (в т.ч. внутреннюю карту Set10)</entry>
     <entry key="card.info.receipt.description">«Инфо по карте»: брать карту из текущего чека</entry>
+    <entry key="log.trace.description">Трассировка: каждый вызов метода плагина пишется в журнал (для теста)</entry>
+    <entry key="log.file.enabled.description">Дублировать журнал плагина в свой файл</entry>
+    <entry key="log.file.description">Путь к файлу журнала (пусто = папка плагина/deya-logs/deya-plugin.log)</entry>
 </properties>

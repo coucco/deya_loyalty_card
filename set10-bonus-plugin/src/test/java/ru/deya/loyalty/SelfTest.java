@@ -86,6 +86,8 @@ public class SelfTest {
         testRedeem();
         testRedeemByCashier();
         testCardPlugin();
+        testTraceAndFileLog();
+        testKillSwitch();
 
         System.out.println("Проверок выполнено: " + checks + ", ошибок: " + failures.size());
         for (String f : failures) {
@@ -499,6 +501,79 @@ public class SelfTest {
             srv.status.set(409);
             check(cardPlugin(m, null).writeOff(card("999000000000001", CardType.EXTERNAL), new BigDecimal("30"), saleReceipt(null, true)).getResponseStatus() == BonusOperationStatus.ERROR,
                     "writeOff: отказ сервера → ERROR с сообщением кассиру");
+        } finally {
+            srv.stop();
+        }
+    }
+
+    /** log.trace + свой файл журнала: видно, какие методы касса вызвала и чем закончилось; ротация файла. */
+    static void testTraceAndFileLog() throws Exception {
+        java.io.File dir = java.nio.file.Files.createTempDirectory("deya-log").toFile();
+        java.io.File file = new java.io.File(dir, "deya-plugin.log");
+        Map<String, String> m = new HashMap<>();
+        m.put(PluginSettings.KEY_SERVER_URL, "http://127.0.0.1:" + freePort() + "/api/v1/accruals");
+        m.put(PluginSettings.KEY_CONNECTION_TIMEOUT, "300");
+        m.put(PluginSettings.KEY_LOG_TRACE, "true");
+        m.put(PluginSettings.KEY_LOG_FILE, file.getPath());
+        m.put(PluginSettings.KEY_CARD_PREFIX, "2000");
+        BonusAccrualPlugin lp = plugin(m);
+        Receipt r = saleReceipt(card("2000000000017", CardType.INTERNAL), true);
+        lp.doDiscount(r);
+        lp.cancelDiscount(r, null);
+        lp.eventReceiptFiscalized(saleReceipt(null, true), null);
+        LoyProviderFeedback q = lp.eventReceiptFiscalized(r, null);
+        lp.onSendFeedback(q);
+        AtomicInteger cb = new AtomicInteger();
+        cardPlugin(m, null).cardSearchFinished(finishedReq(card("2000000000017", CardType.INTERNAL), cb));
+        cardPlugin(m, null).searchCard(searchReq("2000000000017", CardSearchEventSource.BARCODE));
+        String text = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+        for (String must : new String[]{"вызван doDiscount", "вызван cancelDiscount", "вызван eventReceiptFiscalized", "нет карты ДЕЯ",
+                "в очередь кассы", "вызван onSendFeedback", "нет связи, повтор позже", "вызван cardSearchFinished", "вызван searchCard", "Нет связи с сервером лояльности"}) {
+            check(text.contains(must), "журнал в файле содержит «" + must + "»");
+        }
+        check(text.contains("****0017") && !text.contains("2000000000017"), "в журнале номера карт замаскированы");
+        // без трассировки: обычные сообщения пишутся, строки «вызван» — нет
+        java.io.File plain = new java.io.File(dir, "plain.log");
+        Map<String, String> m2 = new HashMap<>(m);
+        m2.put(PluginSettings.KEY_LOG_TRACE, "false");
+        m2.put(PluginSettings.KEY_LOG_FILE, plain.getPath());
+        plugin(m2).eventReceiptFiscalized(r, null);
+        String t2 = new String(java.nio.file.Files.readAllBytes(plain.toPath()), StandardCharsets.UTF_8);
+        check(!t2.contains("вызван") && t2.contains("Нет связи"), "log.trace=false: только обычные сообщения");
+        // ротация: при переполнении файл уходит в .1, старые сдвигаются
+        java.io.File rot = new java.io.File(dir, "rot.log");
+        java.nio.file.Files.write(rot.toPath(), "a".getBytes(StandardCharsets.UTF_8));
+        java.nio.file.Files.write(new java.io.File(dir, "rot.log.1").toPath(), "b".getBytes(StandardCharsets.UTF_8));
+        PluginLog.rotate(rot);
+        check(!rot.exists() && "a".equals(new String(java.nio.file.Files.readAllBytes(new java.io.File(dir, "rot.log.1").toPath()), StandardCharsets.UTF_8))
+                && new java.io.File(dir, "rot.log.2").exists(), "ротация файла журнала");
+        check("x=1 y={}".equals(PluginLog.format("x={} y={}", new Object[]{1})) && PluginLog.format("e", new Object[]{new RuntimeException("boom")}).contains("boom"),
+                "формат сообщений как в slf4j");
+    }
+
+    /** enabled=false — аварийный выключатель: ни начисления, ни списания, ни активации, ни поиска, ни инфо по карте; без запросов на сервер. */
+    static void testKillSwitch() throws Exception {
+        TestServer srv = new TestServer();
+        try {
+            Map<String, String> m = new HashMap<>();
+            m.put(PluginSettings.KEY_SERVER_URL, srv.url());
+            m.put(PluginSettings.KEY_ENABLED, "false");
+            m.put(PluginSettings.KEY_REDEEM_ENABLED, "true");
+            m.put(PluginSettings.KEY_CARD_MODE, "external");
+            srv.body.set("{\"points\":50,\"discount\":\"50.00\",\"lines\":[{\"number\":1,\"discount\":\"50.00\"}]}");
+            int before = srv.requests.get();
+            Receipt r = saleReceipt(card("2000000000017", CardType.INTERNAL), true);
+            BonusAccrualPlugin lp = plugin(m);
+            check(lp.doDiscount(r).getDiscounts().isEmpty(), "enabled=false: на подытоге без списания");
+            lp.cancelDiscount(r, null);
+            check(lp.eventReceiptFiscalized(r, null) == null, "enabled=false: чек не отправляется");
+            DeyaCardPlugin cp = cardPlugin(m, scriptedUi(new CopyOnWriteArrayList<>(), "x", "y"));
+            check(cp.searchCard(searchReq("2000000000017", CardSearchEventSource.BARCODE)).getResponseStatus() == CardSearchResponseStatus.UNKNOWN_CARD, "enabled=false: карты ищет Set10");
+            AtomicInteger cb = new AtomicInteger();
+            cp.cardSearchFinished(finishedReq(card("2000000000017", CardType.INTERNAL), cb));
+            check(cb.get() == 1, "enabled=false: активация не предлагается, касса продолжает");
+            check(cp.getCardInfo(searchReq("2000000000017", CardSearchEventSource.NUMBER)).getCardSearchStatus() == CardSearchResponseStatus.UNKNOWN_CARD, "enabled=false: инфо по карте отдаётся Set10");
+            check(srv.requests.get() == before, "enabled=false: ни одного запроса на сервер");
         } finally {
             srv.stop();
         }

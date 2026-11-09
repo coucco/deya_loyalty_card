@@ -1,6 +1,5 @@
 package ru.deya.loyalty;
 
-import org.slf4j.Logger;
 import ru.crystals.pos.api.ext.loyal.dto.Discount;
 import ru.crystals.pos.api.ext.loyal.dto.DiscountType;
 import ru.crystals.pos.api.ext.loyal.dto.LoyaltyResult;
@@ -42,13 +41,13 @@ final class RedeemOnReceipt {
     static final String ATTR_REF = "deya.redeem.ref";
     private static final int MAX_REMEMBERED = 300;
 
-    private final Logger log;
+    private final PluginLog log;
     private final BonusServerClient client;
     private final FailureBreaker breaker;
     /** ref чека → баллы последнего резерва (на случай, если касса не вернёт наш LoyaltyResult при фискализации). */
     private final Map<String, Integer> reserved = new ConcurrentHashMap<>();
 
-    RedeemOnReceipt(Logger log, BonusServerClient client, FailureBreaker breaker) {
+    RedeemOnReceipt(PluginLog log, BonusServerClient client, FailureBreaker breaker) {
         this.log = log;
         this.client = client;
         this.breaker = breaker;

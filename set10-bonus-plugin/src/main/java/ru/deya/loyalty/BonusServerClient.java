@@ -30,10 +30,15 @@ class BonusServerClient {
 
     private static final int MAX_LOGGED_BODY = 512;
 
-    private final Logger log;
+    private final PluginLog log;
 
-    BonusServerClient(Logger log) {
+    BonusServerClient(PluginLog log) {
         this.log = log;
+    }
+
+    /** Только лог кассы (для тестов). */
+    BonusServerClient(Logger log) {
+        this(PluginLog.of(log));
     }
 
     /** Ответ сервера: код и тело (обрезанное до разумного размера). */
@@ -105,7 +110,7 @@ class BonusServerClient {
         }
     }
 
-    static Outcome classify(int status, String key, String answer, Logger log) {
+    static Outcome classify(int status, String key, String answer, PluginLog log) {
         if (status >= 200 && status < 300) {
             return Outcome.DELIVERED;
         }
