@@ -5,10 +5,16 @@ export function makeSms(cfg, log = console) {
     return {
       outbox,
       async send(phone, text) {
-        const url = cfg.smsHttpUrl.replace('{phone}', encodeURIComponent(phone)).replace('{text}', encodeURIComponent(text));
-        const r = await fetch(url, { headers: cfg.smsHttpAuth ? { Authorization: cfg.smsHttpAuth } : {}, signal: AbortSignal.timeout(10000) });
-        if (!r.ok) throw new Error('SMS provider HTTP ' + r.status);
-        smsRuCheck(await r.text(), phone);
+        try {
+          const url = cfg.smsHttpUrl.replace('{phone}', encodeURIComponent(phone)).replace('{text}', encodeURIComponent(text));
+          const r = await fetch(url, { headers: cfg.smsHttpAuth ? { Authorization: cfg.smsHttpAuth } : {}, signal: AbortSignal.timeout(10000) });
+          if (!r.ok) throw new Error('SMS provider HTTP ' + r.status);
+          smsRuCheck(await r.text(), phone);
+        } catch (e) {
+          // причина видна в `docker compose logs app`; номер маскируем, ссылку (в ней api_id) не пишем
+          log.error(`СМС НЕ ОТПРАВЛЕНО на +${String(phone).slice(0, 4)}***${String(phone).slice(-2)}: ${e.message}`);
+          throw e;
+        }
       },
     };
   }
