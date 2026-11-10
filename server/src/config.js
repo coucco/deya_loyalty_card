@@ -31,6 +31,7 @@ export function loadConfig(overrides = {}) {
       marketing: env.DOC_MARKETING_URL || '/legal/marketing-consent.html',
     },
     smsProvider: env.SMS_PROVIDER || 'console',   // console | http
+    smsConsoleTest: env.SMS_CONSOLE_TEST === '1', // разрешить console на боевом режиме (тестовый сервер без отправителя СМС)
     smsHttpUrl: env.SMS_HTTP_URL || '',           // шаблон URL: {phone} {text}
     smsHttpAuth: env.SMS_HTTP_AUTH || '',         // значение заголовка Authorization (если нужно)
     otpTtlSec: int('OTP_TTL_SEC', 300),
@@ -46,7 +47,10 @@ export function loadConfig(overrides = {}) {
   if (!['pool', 'generate'].includes(c.cardIssueMode)) throw new Error('CARD_ISSUE_MODE: pool | generate');
   if (c.isProd) {
     if (c.adminToken.length < 24) throw new Error('В production нужен ADMIN_TOKEN (не короче 24 символов)');
-    if (c.smsProvider === 'console') throw new Error('В production нельзя SMS_PROVIDER=console: коды уходили бы в лог. Настройте SMS_PROVIDER=http');
+    // Тестовый сервер, пока не одобрен отправитель СМС: коды пишутся в лог (docker compose logs app). Только с явным флагом.
+    if (c.smsProvider === 'console' && !c.smsConsoleTest) {
+      throw new Error('В production нельзя SMS_PROVIDER=console: коды уходили бы в лог. Настройте SMS_PROVIDER=http (только для тестового сервера: SMS_CONSOLE_TEST=1)');
+    }
   }
   if (!c.adminToken) c.adminToken = crypto.randomBytes(16).toString('hex'); // dev: случайный, печатается при старте
   return c;

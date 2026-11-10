@@ -79,4 +79,5 @@ test('в production без ADMIN_TOKEN и с SMS_PROVIDER=console сервер �
   const { loadConfig } = await import('../src/config.js');
   assert.throws(() => loadConfig({ isProd: true, adminToken: '' }));
   assert.throws(() => loadConfig({ isProd: true, adminToken: 'x'.repeat(30), smsProvider: 'console' }));
+  assert.doesNotThrow(() => loadConfig({ isProd: true, adminToken: 'x'.repeat(30), smsProvider: 'console', smsConsoleTest: true }));
 });
