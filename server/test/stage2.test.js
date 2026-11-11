@@ -105,6 +105,56 @@ test('касса не вернула плагину результат: спис
   assert.equal((await accrue(sale)).status, 409);                          // повтор не списывает второй раз
 });
 
+test('цена 3 ставится Set10 в конце: на подытоге позиция с ценой 3 не участвует в списании', async () => {
+  const u = await register('+79000000017');
+  const card = (await me(u.json.token)).card.number;
+  await accrue(receipt(card, 'fd:p3:0', [{ sum: '2000.00' }]));        // +100
+  await admin('PATCH', '/api/admin/points/hypermarket', { redeemPct: 5 });
+  await admin('PUT', '/api/admin/settings', { redeem_on_discounted: true });
+  await S.call('PATCH', '/api/me', { token: u.json.token, body: { autoRedeem: true } });
+  const gel = { number: 1, quantity: '1.000', price: '209.90', sum: '209.90', discount: '0.00', prices: [{ number: 1, price: '209.90' }, { number: 3, price: '169.90' }] };
+  const plain = { number: 2, quantity: '1.000', price: '400.00', sum: '400.00', discount: '0.00', prices: [{ number: 1, price: '400.00' }] };
+  const res = (ref, lines) => S.call('POST', '/api/v1/pos/redeem/reserve', { token: hyper, body: { ref, card: { number: card }, lines } });
+  assert.equal((await res('ref:p3:1', [gel])).json.reason, 'nothing_eligible');
+  const r = await res('ref:p3:2', [gel, plain]);
+  assert.equal(r.json.points, 20);                                       // 5% только от 400
+  assert.deepEqual(r.json.lines, [{ number: 2, discount: '20.00' }]);
+  // если Set10 уже применил цену 3 к моменту расчёта (сумма = цена 3) — списание идёт поверх неё
+  const gel3 = { ...gel, sum: '169.90', discount: '40.00', discounts: [{ id: null, guid: 3768, amount: '40.00' }] };
+  assert.equal((await res('ref:p3:3', [gel3])).json.points, 8);           // 5% от 169.90
+  await S.call('POST', '/api/v1/pos/redeem/cancel', { token: hyper, body: { ref: 'ref:p3:3' } });
+  await admin('PUT', '/api/admin/settings', { redeem_on_discounted: false });
+});
+
+test('скидку баллами поглотила цена 3: баллы не списываются; сработала поверх — списываются', async () => {
+  const u = await register('+79000000018');
+  const card = (await me(u.json.token)).card.number;
+  await accrue(receipt(card, 'fd:ab:0', [{ sum: '2000.00' }]));          // +100
+  await admin('PATCH', '/api/admin/points/hypermarket', { redeemPct: 5 });
+  await S.call('PATCH', '/api/me', { token: u.json.token, body: { autoRedeem: true } });
+  const prices = [{ number: 1, price: '209.90' }, { number: 3, price: '169.90' }];
+  // резерв со старым плагином (без цен): 10 баллов
+  const ref = 'ref:ab:1';
+  await S.call('POST', '/api/v1/pos/redeem/reserve', { token: hyper, body: { ref, card: { number: card }, lines: [{ number: 1, sum: '209.90', discount: '0.00' }] } });
+  assert.equal((await me(u.json.token)).available, 90);
+  // как на тестовой кассе: DEYA_BONUS 10 + цена 3 30, итог всё равно 169.90
+  const absorbed = receipt(card, 'fd:ab:1', [{ number: 1, quantity: '1.000', price: '209.90', sum: '169.90', discount: '40.00', prices,
+    discounts: [{ id: 'DEYA_BONUS', guid: 3883, amount: '10.00' }, { id: null, guid: 3768, amount: '30.00' }] }], { receipt: { key: 'fd:ab:1', ref, total: '169.90' } });
+  const a = await accrue(absorbed);
+  assert.equal(a.json.redeemed, 0); assert.equal(a.json.redeemAbsorbed, 10);
+  let m = await me(u.json.token);
+  assert.equal(m.balance, 100 + 8); assert.equal(m.available, m.balance);   // баллы не потеряны, резерв снят
+  // Set10 применил скидку поверх цены 3: итог 159.90 — выгода 10, списываем 10
+  const ref2 = 'ref:ab:2';
+  await S.call('POST', '/api/v1/pos/redeem/reserve', { token: hyper, body: { ref: ref2, card: { number: card }, lines: [{ number: 1, sum: '209.90', discount: '0.00' }] } });
+  const ok = receipt(card, 'fd:ab:2', [{ number: 1, quantity: '1.000', price: '209.90', sum: '159.90', discount: '50.00', prices,
+    discounts: [{ id: 'DEYA_BONUS', amount: '10.00' }, { id: null, guid: 3768, amount: '40.00' }] }], { receipt: { key: 'fd:ab:2', ref: ref2, total: '159.90' } });
+  const b = await accrue(ok);
+  assert.equal(b.json.redeemed, 10); assert.equal(b.json.redeemAbsorbed, undefined);
+  m = await me(u.json.token);
+  assert.equal(m.balance, 108 - 10 + 8);
+});
+
 test('списание в гипермаркете: резерв на подытоге, цена 3 исключена, подтверждение при пробитии, возврат', async () => {
   const u = await register('+79000000006');
   const card = (await me(u.json.token)).card.number;

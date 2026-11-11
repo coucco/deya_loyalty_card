@@ -3,7 +3,7 @@
 ## Команде внедрения и тестирования (Set10)
 | Документ | Зачем |
 |---|---|
-| `set10-bonus-plugin/dist/DeyaBonusAccrualPlugin.jar` (1.2.2) | плагин; манифест внутри |
+| `set10-bonus-plugin/dist/DeyaBonusAccrualPlugin.jar` (1.2.3) | плагин; манифест внутри |
 | `set10-bonus-plugin/dist/INSTALL.pdf` | куда положить jar, какие 7 настроек вписать |
 | `docs/TEST_PLAN.pdf` | что проверять, по этапам, критерии успеха |
 | + лично от владельца | ключ `pk_…` |

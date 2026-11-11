@@ -13,6 +13,10 @@ const DEFAULT_SETTINGS = {
   accrue_on_discounted: '1',   // начислять баллы на строки со скидкой Set10 (цена 3): 1 — да, 0 — нет
   redeem_on_discounted: '0',   // разрешать списание баллов на строки со скидкой Set10: 1 — да, 0 — нет
   price3_action_ids: '',       // id или guid акций Set10 «цена 3» через запятую (пусто = любая скидка Set10)
+  // Номер цены товара, которую Set10 ставит механикой «Третья цена» (плагин передаёт цены товара в lines[].prices).
+  // Set10 применяет её последней и доводит цену до неё — скидка баллами на такой позиции поглощается.
+  // Поэтому на подытоге такие позиции не участвуют в списании, а при пробитии списываем только реальную выгоду. Пусто — выключено.
+  price3_number: '3',
 };
 const BOOL_SETTINGS = ['accrue_on_discounted', 'redeem_on_discounted'];
 
@@ -21,13 +25,15 @@ export function getSettings(db) {
   for (const r of all(db, 'SELECT key,value FROM settings')) s[r.key] = r.value;
   return { rubPerPoint: Number(s.rub_per_point), rounding: s.rounding, currency: s.currency,
     accrueOnDiscounted: s.accrue_on_discounted === '1', redeemOnDiscounted: s.redeem_on_discounted === '1',
-    price3ActionIds: s.price3_action_ids.split(',').map((x) => x.trim()).filter(Boolean) };
+    price3ActionIds: s.price3_action_ids.split(',').map((x) => x.trim()).filter(Boolean),
+    price3Number: /^\d+$/.test(String(s.price3_number).trim()) ? Number(s.price3_number) : null };
 }
 export function setSetting(db, key, value) {
   if (!(key in DEFAULT_SETTINGS)) throw new HttpError(400, 'bad_setting', 'Неизвестная настройка');
   if (key === 'rub_per_point' && !(Number(value) > 0)) throw new HttpError(400, 'bad_value', 'rub_per_point > 0');
   if (key === 'rounding' && !['half_up', 'floor'].includes(value)) throw new HttpError(400, 'bad_value', 'half_up | floor');
   if (BOOL_SETTINGS.includes(key)) value = value === true || value === '1' || value === 1 ? '1' : '0';
+  if (key === 'price3_number' && !/^\d{0,2}$/.test(String(value).trim())) throw new HttpError(400, 'bad_value', 'Номер цены: число или пусто');
   if (key === 'price3_action_ids' && String(value).length > 2000) throw new HttpError(400, 'bad_value', 'Слишком длинный список');
   run(db, 'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, String(value));
 }
@@ -266,6 +272,51 @@ export function hasSet10Discount(line, settings) {
   return total - own > 0;
 }
 
+/**
+ * Сумма позиции по «цене 3» (копейки), если у товара есть эта цена и она ниже обычной; иначе null.
+ * Цены приходят от плагина в lines[].prices [{number, price}].
+ */
+export function price3Total(line, settings) {
+  if (!settings.price3Number || !Array.isArray(line?.prices)) return null;
+  const p = line.prices.find((x) => x && Number(x.number) === settings.price3Number);
+  if (!p) return null;
+  const qty = Number(line.quantity ?? 1);
+  const unit = Math.abs(parseKop(String(p.price ?? '0')));
+  if (!(unit > 0) || !(qty > 0)) return null;
+  const regular = line.price != null ? Math.abs(parseKop(String(line.price))) : null;
+  if (regular != null && unit >= regular) return null;
+  return Math.round(unit * qty);
+}
+const ownDiscountKop = (line) => (Array.isArray(line?.discounts) ? line.discounts : [])
+  .filter((d) => d && d.id === 'DEYA_BONUS').reduce((x, d) => x + Math.abs(parseKop(String(d.amount ?? '0'))), 0);
+const hasOtherDiscount = (line) => (Array.isArray(line?.discounts) ? line.discounts : [])
+  .some((d) => d && d.id !== 'DEYA_BONUS' && Math.abs(parseKop(String(d.amount ?? '0'))) > 0);
+
+/**
+ * Сколько баллов реально дали выгоду клиенту в пробитом чеке.
+ * Скидка DEYA_BONUS на позиции, где Set10 потом поставил «цену 3», поглощается: цена всё равно = цена 3.
+ * Выгода по позиции = (сумма по цене 3) − (итог позиции), но не больше нашей скидки и не меньше 0.
+ * Нет данных о скидках по позициям — верим плагину.
+ */
+export function effectiveRedemption(redemption, payload, settings) {
+  if (!redemption) return null;
+  const lines = Array.isArray(payload?.lines) ? payload.lines : [];
+  let own = 0, eff = 0;
+  for (const l of lines) {
+    const a = ownDiscountKop(l);
+    if (a <= 0) continue;
+    own += a;
+    const t3 = price3Total(l, settings);
+    if (t3 != null && hasOtherDiscount(l)) eff += Math.max(0, Math.min(a, t3 - Math.abs(parseKop(String(l.sum ?? '0')))));
+    else eff += a;
+  }
+  if (own <= 0) return redemption;
+  const points = Math.round(eff / (settings.rubPerPoint * 100));
+  const want = Number(redemption.points);
+  if (!(points < want)) return redemption;
+  return { ...redemption, points, absorbed: want - points };
+}
+
 /** База начисления: строки с accrueAllowed!==false (и без цены 3, если так настроено), сумма уже после скидок. Нет строк — итог чека. */
 export function accrualBase(payload, settings = { accrueOnDiscounted: true, price3ActionIds: [] }) {
   const lines = Array.isArray(payload.lines) ? payload.lines : [];
@@ -308,13 +359,14 @@ export function processReceipt(db, point, payload) {
 
     if (op === 'SALE') {
       const { user } = accrualOwner(db, payload.card?.number);
-      const redeemed = commitReceiptRedemption(db, point, user.id, payload.redemption ?? redemptionFromLines(payload, settings), receiptKey, key);
+      const redemption = effectiveRedemption(payload.redemption ?? redemptionFromLines(payload, settings), payload, settings);
+      const redeemed = commitReceiptRedemption(db, point, user.id, redemption, receiptKey, key);
       if (!redeemed && payload.receipt?.ref) releaseReceiptHold(db, point, String(payload.receipt.ref)); // скидки в чеке не было: резерв не нужен
       const points = calcPoints(baseKop, point.accrual_bp, settings);
       insertLedger(db, { userId: user.id, pointId: point.id, type: 'ACCRUAL', points, baseKop, pctBp: point.accrual_bp, receiptKey, idemKey: key,
         meta: { total: payload.receipt?.total ?? null, registerId: payload.registerId ?? null, ref: payload.redemption?.ref ?? payload.receipt?.ref ?? null } });
       run(db, 'UPDATE accounts SET balance=balance+? WHERE user_id=?', points, user.id);
-      return { duplicate: false, accrued: points, redeemed, balance: getAccount(db, user.id).balance };
+      return { duplicate: false, accrued: points, redeemed, ...(redemption?.absorbed ? { redeemAbsorbed: redemption.absorbed } : {}), balance: getAccount(db, user.id).balance };
     }
 
     // REFUND: найти исходное начисление
@@ -346,8 +398,15 @@ export function processReceipt(db, point, payload) {
  */
 
 /** Сколько можно списать на строках чека и как разложить скидку. */
+/** Set10 ещё поставит «цену 3» (сумма позиции выше суммы по цене 3): скидка баллами здесь будет поглощена. */
+function price3Pending(line, settings) {
+  const t3 = price3Total(line, settings);
+  return t3 != null && Math.abs(parseKop(String(line.sum ?? '0'))) > t3;
+}
+
 function posEligible(lines, settings) {
-  return (Array.isArray(lines) ? lines : []).filter((l) => l && l.payBonusAllowed !== false && (settings.redeemOnDiscounted || !hasSet10Discount(l, settings)))
+  return (Array.isArray(lines) ? lines : []).filter((l) => l && l.payBonusAllowed !== false && (settings.redeemOnDiscounted || !hasSet10Discount(l, settings))
+      && !price3Pending(l, settings))
     .map((l) => {
       const sum = Math.abs(parseKop(l.sum ?? '0')), min = l.minSum != null ? Math.abs(parseKop(l.minSum)) : 0;
       return { number: l.number, sum, cap: Math.max(0, sum - Math.max(min, 1)) }; // на строке остаётся хотя бы 1 копейка
@@ -502,9 +561,18 @@ export function redemptionFromLines(payload, settings) {
 
 function commitReceiptRedemption(db, point, userId, redemption, receiptKey, key) {
   const want = Number(redemption?.points);
-  if (!redemption || !Number.isInteger(want) || want <= 0) return 0;
+  if (!redemption || !Number.isInteger(want) || want < 0) return 0;
   const h = redemption.ref ? one(db, 'SELECT * FROM holds WHERE point_id=? AND ref=? ORDER BY created_at DESC LIMIT 1', point.id, String(redemption.ref)) : null;
-  if (h && h.status === 'COMMITTED' && h.user_id === userId) return h.points;   // уже списано кнопкой кассира (writeOff)
+  if (h && h.status === 'COMMITTED' && h.user_id === userId) {   // уже списано кнопкой кассира (writeOff)
+    const back = Math.min(h.points, Number(redemption.absorbed) || 0);   // скидку поглотила «цена 3»: вернуть баллы
+    if (back > 0) {
+      insertLedger(db, { userId, pointId: point.id, type: 'REDEEM_REVERSAL', points: back, receiptKey: 'pos:' + redemption.ref, idemKey: 'redeem-absorbed:' + key,
+        meta: { reason: 'price3_absorbed', ref: redemption.ref } });
+      run(db, 'UPDATE accounts SET balance=balance+? WHERE user_id=?', back, userId);
+    }
+    return h.points - back;
+  }
+  if (want === 0) return 0;
   if (h && h.status === 'HELD') {
     run(db, "UPDATE holds SET status='COMMITTED' WHERE id=?", h.id);
     run(db, 'UPDATE accounts SET held=held-? WHERE user_id=?', h.points, h.user_id);
