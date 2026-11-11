@@ -260,7 +260,9 @@ export function hasSet10Discount(line, settings) {
     const ids = new Set(settings.price3ActionIds);
     return (line.discounts || []).some((d) => (d.id != null && ids.has(String(d.id))) || (d.guid != null && ids.has(String(d.guid))));
   }
-  const total = Math.abs(parseKop(line.discount ?? '0')), own = Math.abs(parseKop(line.ownDiscount ?? '0'));
+  const total = Math.abs(parseKop(line.discount ?? '0'));
+  const own = line.ownDiscount != null ? Math.abs(parseKop(line.ownDiscount))
+    : (Array.isArray(line.discounts) ? line.discounts : []).filter((d) => d && d.id === 'DEYA_BONUS').reduce((x, d) => x + Math.abs(parseKop(String(d.amount ?? '0'))), 0);
   return total - own > 0;
 }
 
@@ -306,7 +308,7 @@ export function processReceipt(db, point, payload) {
 
     if (op === 'SALE') {
       const { user } = accrualOwner(db, payload.card?.number);
-      const redeemed = commitReceiptRedemption(db, point, user.id, payload.redemption, receiptKey, key);
+      const redeemed = commitReceiptRedemption(db, point, user.id, payload.redemption ?? redemptionFromLines(payload, settings), receiptKey, key);
       if (!redeemed && payload.receipt?.ref) releaseReceiptHold(db, point, String(payload.receipt.ref)); // скидки в чеке не было: резерв не нужен
       const points = calcPoints(baseKop, point.accrual_bp, settings);
       insertLedger(db, { userId: user.id, pointId: point.id, type: 'ACCRUAL', points, baseKop, pctBp: point.accrual_bp, receiptKey, idemKey: key,
@@ -480,6 +482,24 @@ export function cancelPos(db, point, ref) {
  * Подтверждение списания при пробитии чека. Чек уже фискализирован со скидкой, поэтому списывается столько, сколько
  * реально дано в чеке (redemption.points), даже если резерв истёк; если баллов не хватает — списываем остаток, недостачу пишем в журнал.
  */
+/**
+ * Списание по самому чеку: скидки нашего плагина (id DEYA_BONUS) в позициях.
+ * Нужна, когда касса при пробитии не вернула плагину его результат расчёта и поля redemption нет,
+ * а скидка баллами в чеке была (иначе клиент получил бы скидку без списания баллов).
+ */
+export function redemptionFromLines(payload, settings) {
+  const lines = Array.isArray(payload?.lines) ? payload.lines : [];
+  let kop = 0;
+  for (const l of lines) {
+    for (const d of Array.isArray(l?.discounts) ? l.discounts : []) {
+      if (d && d.id === 'DEYA_BONUS') kop += Math.abs(parseKop(String(d.amount ?? '0')));
+    }
+  }
+  if (kop <= 0) return null;
+  const points = Math.round(kop / (settings.rubPerPoint * 100));
+  return points > 0 ? { ref: payload.receipt?.ref ?? null, points, source: 'lines' } : null;
+}
+
 function commitReceiptRedemption(db, point, userId, redemption, receiptKey, key) {
   const want = Number(redemption?.points);
   if (!redemption || !Number.isInteger(want) || want <= 0) return 0;
@@ -492,7 +512,7 @@ function commitReceiptRedemption(db, point, userId, redemption, receiptKey, key)
   const acc = one(db, 'SELECT balance, held FROM accounts WHERE user_id=?', userId);
   const take = Math.max(0, Math.min(want, acc.balance - acc.held));
   insertLedger(db, { userId, pointId: point.id, type: 'REDEEM', points: -take, receiptKey, idemKey: 'redeem:' + key,
-    meta: { ref: redemption.ref ?? null, holdId: h?.id ?? null, wanted: want, shortfall: want - take } });
+    meta: { ref: redemption.ref ?? null, holdId: h?.id ?? null, wanted: want, shortfall: want - take, source: redemption.source ?? 'plugin' } });
   run(db, 'UPDATE accounts SET balance=balance-? WHERE user_id=?', take, userId);
   return take;
 }

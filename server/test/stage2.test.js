@@ -84,6 +84,27 @@ test('журнал баллов нельзя изменить или удали�
   assert.throws(() => S.db.exec('DELETE FROM ledger'), /append-only/);
 });
 
+test('касса не вернула плагину результат: списание берётся из скидки DEYA_BONUS в позициях чека', async () => {
+  const u = await register('+79000000016');
+  const card = (await me(u.json.token)).card.number;
+  await accrue(receipt(card, 'fd:x:0', [{ sum: '1000.00' }]));          // +50
+  await admin('PATCH', '/api/admin/points/hypermarket', { redeemPct: 5 });
+  await S.call('PATCH', '/api/me', { token: u.json.token, body: { autoRedeem: true } });
+  const ref = 'ref:-no-:12:1794398562902';
+  const r = await S.call('POST', '/api/v1/pos/redeem/reserve', { token: hyper, body: { ref, card: { number: card }, lines: [{ number: 1, sum: '209.90', discount: '0.00' }] } });
+  assert.equal(r.json.points, 10);
+  // как в журнале тестовой кассы: redemption нет, скидка видна в discounts позиции
+  const sale = receipt(card, 'fd:x:1', [{ number: 1, sum: '169.90', discount: '40.00',
+    discounts: [{ id: 'DEYA_BONUS', guid: 3731, amount: '10.00' }, { id: null, guid: 3768, amount: '30.00' }] }],
+    { receipt: { key: 'fd:x:1', ref, total: '169.90' } });
+  const a = await accrue(sale);
+  assert.equal(a.json.redeemed, 10);
+  assert.equal(a.json.accrued, 8);                                         // 169.90 × 5% = 8.495 → 8
+  const m = await me(u.json.token);
+  assert.equal(m.balance, 50 - 10 + 8); assert.equal(m.available, m.balance);   // резерв не висит
+  assert.equal((await accrue(sale)).status, 409);                          // повтор не списывает второй раз
+});
+
 test('списание в гипермаркете: резерв на подытоге, цена 3 исключена, подтверждение при пробитии, возврат', async () => {
   const u = await register('+79000000006');
   const card = (await me(u.json.token)).card.number;
