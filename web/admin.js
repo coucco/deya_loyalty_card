@@ -115,7 +115,7 @@ function draw(pts, stats, audit, pool, mx) {
   const accD = h('input', { type: 'checkbox' }); accD.checked = st.accrueOnDiscounted;
   const redD = h('input', { type: 'checkbox' }); redD.checked = st.redeemOnDiscounted;
   const p3 = h('input', { type: 'text', value: st.price3ActionIds.join(', '), placeholder: 'пусто = любая скидка Set10', style: 'width:300px' });
-  const p3n = h('input', { type: 'text', value: st.price3Number ?? '', placeholder: 'пусто = выкл.', style: 'width:60px' });
+  const p3n = h('input', { type: 'text', value: (st.price3Numbers || []).join(', '), placeholder: 'пусто = выкл.', style: 'width:80px' });
   const q = h('input', { type: 'text', placeholder: 'телефон, карта или ID профиля' });
   const found = h('div'), client = h('div');
   const search = async () => {
@@ -142,7 +142,7 @@ function draw(pts, stats, audit, pool, mx) {
       h('p', null, h('label', null, accD, ' начислять баллы на товары со скидкой Set10 («цена 3»)')),
       h('p', null, h('label', null, redD, ' разрешать оплату баллами товаров со скидкой Set10 («цена 3»)')),
       h('p', null, 'Акции Set10 «цена 3» (id или guid через запятую): ', p3),
-      h('p', null, 'Номер цены товара для «цены 3»: ', p3n, h('span', { style: 'color:var(--muted);font-size:13px' }, ' — на таких товарах баллы не списываются, пока Set10 ставит цену 3 после скидки баллами (иначе скидка поглощается)')),
+      h('p', null, 'Номера цен товара, которые ставят механики Set10 (цена 2, цена 3), через запятую: ', p3n, h('span', { style: 'color:var(--muted);font-size:13px' }, ' — на таких товарах баллы не списываются, пока Set10 ставит эти цены после скидки баллами (иначе скидка поглощается)')),
       h('p', null, h('button', { class: 'sbtn o', onclick: async () => { try { await call('PUT', '/api/admin/settings', { rub_per_point: rpp.value, rounding: rnd.value,
         accrue_on_discounted: accD.checked, redeem_on_discounted: redD.checked, price3_action_ids: p3.value.split(',').map((x) => x.trim()).filter(Boolean).join(','), price3_number: p3n.value.trim() }); load(); } catch (e) { alert(e.message); } } }, 'Сохранить'))),
     poolSection(pool), metricsSection(mx),

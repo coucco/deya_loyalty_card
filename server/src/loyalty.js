@@ -13,7 +13,7 @@ const DEFAULT_SETTINGS = {
   accrue_on_discounted: '1',   // начислять баллы на строки со скидкой Set10 (цена 3): 1 — да, 0 — нет
   redeem_on_discounted: '0',   // разрешать списание баллов на строки со скидкой Set10: 1 — да, 0 — нет
   price3_action_ids: '',       // id или guid акций Set10 «цена 3» через запятую (пусто = любая скидка Set10)
-  // Номер цены товара, которую Set10 ставит механикой «Третья цена» (плагин передаёт цены товара в lines[].prices).
+  // Номера цен товара, которые Set10 ставит механиками «Вторая/Третья цена», через запятую (плагин передаёт цены в lines[].prices).
   // Set10 применяет её последней и доводит цену до неё — скидка баллами на такой позиции поглощается.
   // Поэтому на подытоге такие позиции не участвуют в списании, а при пробитии списываем только реальную выгоду. Пусто — выключено.
   price3_number: '3',
@@ -26,14 +26,14 @@ export function getSettings(db) {
   return { rubPerPoint: Number(s.rub_per_point), rounding: s.rounding, currency: s.currency,
     accrueOnDiscounted: s.accrue_on_discounted === '1', redeemOnDiscounted: s.redeem_on_discounted === '1',
     price3ActionIds: s.price3_action_ids.split(',').map((x) => x.trim()).filter(Boolean),
-    price3Number: /^\d+$/.test(String(s.price3_number).trim()) ? Number(s.price3_number) : null };
+    price3Numbers: String(s.price3_number).split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).map(Number) };
 }
 export function setSetting(db, key, value) {
   if (!(key in DEFAULT_SETTINGS)) throw new HttpError(400, 'bad_setting', 'Неизвестная настройка');
   if (key === 'rub_per_point' && !(Number(value) > 0)) throw new HttpError(400, 'bad_value', 'rub_per_point > 0');
   if (key === 'rounding' && !['half_up', 'floor'].includes(value)) throw new HttpError(400, 'bad_value', 'half_up | floor');
   if (BOOL_SETTINGS.includes(key)) value = value === true || value === '1' || value === 1 ? '1' : '0';
-  if (key === 'price3_number' && !/^\d{0,2}$/.test(String(value).trim())) throw new HttpError(400, 'bad_value', 'Номер цены: число или пусто');
+  if (key === 'price3_number' && !/^\s*(\d{1,2}\s*(,\s*\d{1,2}\s*)*)?$/.test(String(value))) throw new HttpError(400, 'bad_value', 'Номера цен: числа через запятую или пусто');
   if (key === 'price3_action_ids' && String(value).length > 2000) throw new HttpError(400, 'bad_value', 'Слишком длинный список');
   run(db, 'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, String(value));
 }
@@ -273,19 +273,18 @@ export function hasSet10Discount(line, settings) {
 }
 
 /**
- * Сумма позиции по «цене 3» (копейки), если у товара есть эта цена и она ниже обычной; иначе null.
- * Цены приходят от плагина в lines[].prices [{number, price}].
+ * Суммы позиции по «ценовым» механикам Set10 (цена 2, цена 3… — номера из настройки), копейки, по возрастанию.
+ * Только цены ниже обычной. Цены приходят от плагина в lines[].prices [{number, price}].
  */
-export function price3Total(line, settings) {
-  if (!settings.price3Number || !Array.isArray(line?.prices)) return null;
-  const p = line.prices.find((x) => x && Number(x.number) === settings.price3Number);
-  if (!p) return null;
+export function priceTargets(line, settings) {
+  if (!settings.price3Numbers?.length || !Array.isArray(line?.prices)) return [];
   const qty = Number(line.quantity ?? 1);
-  const unit = Math.abs(parseKop(String(p.price ?? '0')));
-  if (!(unit > 0) || !(qty > 0)) return null;
   const regular = line.price != null ? Math.abs(parseKop(String(line.price))) : null;
-  if (regular != null && unit >= regular) return null;
-  return Math.round(unit * qty);
+  if (!(qty > 0)) return [];
+  return line.prices.filter((x) => x && settings.price3Numbers.includes(Number(x.number)))
+    .map((x) => Math.abs(parseKop(String(x.price ?? '0'))))
+    .filter((unit) => unit > 0 && (regular == null || unit < regular))
+    .map((unit) => Math.round(unit * qty)).sort((a, b) => a - b);
 }
 const ownDiscountKop = (line) => (Array.isArray(line?.discounts) ? line.discounts : [])
   .filter((d) => d && d.id === 'DEYA_BONUS').reduce((x, d) => x + Math.abs(parseKop(String(d.amount ?? '0'))), 0);
@@ -306,8 +305,9 @@ export function effectiveRedemption(redemption, payload, settings) {
     const a = ownDiscountKop(l);
     if (a <= 0) continue;
     own += a;
-    const t3 = price3Total(l, settings);
-    if (t3 != null && hasOtherDiscount(l)) eff += Math.max(0, Math.min(a, t3 - Math.abs(parseKop(String(l.sum ?? '0')))));
+    const sum = Math.abs(parseKop(String(l.sum ?? '0')));
+    const target = priceTargets(l, settings).find((t) => t >= sum);   // ближайшая «ценовая» сумма не ниже итога
+    if (target != null && hasOtherDiscount(l)) eff += Math.max(0, Math.min(a, target - sum));
     else eff += a;
   }
   if (own <= 0) return redemption;
@@ -398,10 +398,10 @@ export function processReceipt(db, point, payload) {
  */
 
 /** Сколько можно списать на строках чека и как разложить скидку. */
-/** Set10 ещё поставит «цену 3» (сумма позиции выше суммы по цене 3): скидка баллами здесь будет поглощена. */
+/** Set10 ещё поставит цену 2/3 (сумма позиции выше суммы по этой цене): скидка баллами здесь будет поглощена. */
 function price3Pending(line, settings) {
-  const t3 = price3Total(line, settings);
-  return t3 != null && Math.abs(parseKop(String(line.sum ?? '0'))) > t3;
+  const t = priceTargets(line, settings);
+  return t.length > 0 && Math.abs(parseKop(String(line.sum ?? '0'))) > t[0];
 }
 
 function posEligible(lines, settings) {

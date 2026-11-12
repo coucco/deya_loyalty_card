@@ -155,6 +155,25 @@ test('скидку баллами поглотила цена 3: баллы не
   assert.equal(m.balance, 108 - 10 + 8);
 });
 
+test('цена 2 и цена 3 (настройка «2,3»): обе защищены; ошибки — в пользу клиента', async () => {
+  const u = await register('+79000000019');
+  const card = (await me(u.json.token)).card.number;
+  await accrue(receipt(card, 'fd:p2:0', [{ sum: '2000.00' }]));          // +100
+  await admin('PATCH', '/api/admin/points/hypermarket', { redeemPct: 5 });
+  await admin('PUT', '/api/admin/settings', { price3_number: '2, 3' });
+  await S.call('PATCH', '/api/me', { token: u.json.token, body: { autoRedeem: true } });
+  const prices = [{ number: 1, price: '200.00' }, { number: 2, price: '180.00' }, { number: 3, price: '160.00' }];
+  const line = { number: 1, quantity: '1.000', price: '200.00', sum: '200.00', discount: '0.00', prices };
+  const r = await S.call('POST', '/api/v1/pos/redeem/reserve', { token: hyper, body: { ref: 'ref:p2:1', card: { number: card }, lines: [line] } });
+  assert.equal(r.json.reason, 'nothing_eligible');
+  const fiscal = async (key, sum, other) => (await accrue(receipt(card, key, [{ ...line, sum, discount: ((200 - Number(sum))).toFixed(2),
+    discounts: [{ id: 'DEYA_BONUS', amount: '10.00' }, { id: null, guid: 1, amount: other }] }], { redemption: { ref: 'ref:' + key, points: 10 } }))).json;
+  assert.equal((await fiscal('fd:p2:a', '180.00', '10.00')).redeemed, 0);   // цена 2 поглотила
+  assert.equal((await fiscal('fd:p2:b', '160.00', '30.00')).redeemed, 0);   // цена 3 поглотила
+  assert.equal((await fiscal('fd:p2:c', '150.00', '40.00')).redeemed, 10);  // поверх цены 3
+  await admin('PUT', '/api/admin/settings', { price3_number: '3' });
+});
+
 test('списание в гипермаркете: резерв на подытоге, цена 3 исключена, подтверждение при пробитии, возврат', async () => {
   const u = await register('+79000000006');
   const card = (await me(u.json.token)).card.number;
