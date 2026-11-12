@@ -276,12 +276,12 @@ export function hasSet10Discount(line, settings) {
  * Суммы позиции по «ценовым» механикам Set10 (цена 2, цена 3… — номера из настройки), копейки, по возрастанию.
  * Только цены ниже обычной. Цены приходят от плагина в lines[].prices [{number, price}].
  */
-export function priceTargets(line, settings) {
-  if (!settings.price3Numbers?.length || !Array.isArray(line?.prices)) return [];
+export function priceTargets(line, settings, anyPrice = false) {
+  if ((!anyPrice && !settings.price3Numbers?.length) || !Array.isArray(line?.prices)) return [];
   const qty = Number(line.quantity ?? 1);
   const regular = line.price != null ? Math.abs(parseKop(String(line.price))) : null;
   if (!(qty > 0)) return [];
-  return line.prices.filter((x) => x && settings.price3Numbers.includes(Number(x.number)))
+  return line.prices.filter((x) => x && (anyPrice || settings.price3Numbers.includes(Number(x.number))))
     .map((x) => Math.abs(parseKop(String(x.price ?? '0'))))
     .filter((unit) => unit > 0 && (regular == null || unit < regular))
     .map((unit) => Math.round(unit * qty)).sort((a, b) => a - b);
@@ -306,7 +306,8 @@ export function effectiveRedemption(redemption, payload, settings) {
     if (a <= 0) continue;
     own += a;
     const sum = Math.abs(parseKop(String(l.sum ?? '0')));
-    const target = priceTargets(l, settings).find((t) => t >= sum);   // ближайшая «ценовая» сумма не ниже итога
+    // при пробитии проверяем по ВСЕМ ценам товара ниже обычной (не зависит от настройки «Номера цен»): ошибка — в пользу клиента
+    const target = priceTargets(l, settings, true).find((t) => t >= sum);   // ближайшая «ценовая» сумма не ниже итога
     if (target != null && hasOtherDiscount(l)) eff += Math.max(0, Math.min(a, target - sum));
     else eff += a;
   }

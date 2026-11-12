@@ -49,6 +49,7 @@ test('пул пуст: клиент без карты; после загрузк
   assert.equal((await me(r2.json.token)).card.number, '7770000000002');
   const pool = await admin('GET', '/api/admin/cards/pool');
   assert.equal(pool.json.pool.find((p) => p.kind === 'virtual' && p.status === 'free').n, 9);
+  await admin('POST', '/api/admin/cards/import', { kind: 'virtual', range: { from: '7770000000012', to: '7770000000040' } });   // запас для остальных тестов
 });
 
 test('карта из пула, ещё не выданная клиенту, на кассе не принимается (422)', async () => {
@@ -171,6 +172,27 @@ test('цена 2 и цена 3 (настройка «2,3»): обе защище
   assert.equal((await fiscal('fd:p2:a', '180.00', '10.00')).redeemed, 0);   // цена 2 поглотила
   assert.equal((await fiscal('fd:p2:b', '160.00', '30.00')).redeemed, 0);   // цена 3 поглотила
   assert.equal((await fiscal('fd:p2:c', '150.00', '40.00')).redeemed, 10);  // поверх цены 3
+  await admin('PUT', '/api/admin/settings', { price3_number: '3' });
+});
+
+test('поле «Номера цен» пустое: резерв на цену 3 даётся, но поглощённые баллы при пробитии всё равно не списываются', async () => {
+  const u = await register('+79000000020');
+  const card = (await me(u.json.token)).card.number;
+  await accrue(receipt(card, 'fd:em:0', [{ sum: '2000.00' }]));          // +100
+  await admin('PATCH', '/api/admin/points/hypermarket', { redeemPct: 5 });
+  await admin('PUT', '/api/admin/settings', { price3_number: '' });
+  await S.call('PATCH', '/api/me', { token: u.json.token, body: { autoRedeem: true } });
+  const prices = [{ number: 1, price: '209.90' }, { number: 3, price: '169.90' }];
+  const ref = 'ref:em:1';
+  const r = await S.call('POST', '/api/v1/pos/redeem/reserve', { token: hyper, body: { ref, card: { number: card },
+    lines: [{ number: 1, quantity: '1.000', price: '209.90', sum: '209.90', discount: '0.00', prices }] } });
+  assert.equal(r.json.points, 10);                                          // поле пустое: на подытоге резерв есть
+  // журнал тестовой кассы, чек fd:-no-:40
+  const a = await accrue(receipt(card, 'fd:em:1', [{ number: 1, quantity: '1.000', price: '209.90', sum: '169.90', discount: '40.00', prices,
+    discounts: [{ id: 'DEYA_BONUS', guid: 4540, amount: '10.00' }, { id: null, guid: 4563, amount: '30.00' }] }], { receipt: { key: 'fd:em:1', ref, total: '169.90' } }));
+  assert.equal(a.json.redeemed, 0); assert.equal(a.json.redeemAbsorbed, 10);
+  const m = await me(u.json.token);
+  assert.equal(m.balance, 100 + 8); assert.equal(m.available, m.balance);
   await admin('PUT', '/api/admin/settings', { price3_number: '3' });
 });
 
