@@ -77,7 +77,8 @@ function serveStatic(publicDir, pathname, res) {
   }
   const ext = path.extname(file);
   const body = fs.readFileSync(file);
-  const noCache = ext === '.html' || path.basename(file) === 'sw.js';
+  // html, js, css — no-cache (браузер сверяется с сервером): после обновления сервера сразу новая версия админки и приложения
+  const noCache = ['.html', '.js', '.css', '.webmanifest'].includes(ext);
   res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': body.length,
     'Cache-Control': noCache ? 'no-cache' : 'public, max-age=3600', ...SEC_HEADERS });
   res.end(body);

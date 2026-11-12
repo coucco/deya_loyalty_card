@@ -321,6 +321,8 @@ public class SelfTest {
             check(srv.lastPath.endsWith("/api/v1/pos/redeem/reserve"), "подытог: запрос резерва: " + srv.lastPath);
             check(srv.lastBody.contains("\"ref\":\"ref:9999078900001234:5:1760000000000\"") && srv.lastBody.contains("\"payBonusAllowed\":true"),
                     "резерв: ref чека и признаки позиций: " + srv.lastBody);
+            check(srv.lastBody.contains("\"prices\":[{\"number\":1,\"price\":\"100.00\"},{\"number\":3,\"price\":\"120.00\"}]"),
+                    "списание: цены товара (в т.ч. цена 3) передаются серверу");
             check(res.getDiscounts().size() == 1, "скидка списанием применена");
             Discount d = res.getDiscounts().iterator().next();
             check(d.getPosNo() == 1 && new BigDecimal("50.00").equals(d.getValue()) && RedeemOnReceipt.DISCOUNT_ID.equals(d.getDiscountId()), "скидка на позицию 1 = 50.00");
@@ -818,6 +820,13 @@ public class SelfTest {
         g.put("getName", "Молоко \"Дея\" 1л");
         g.put("getBarcode", "4600000000011");
         g.put("getGroupCode", "G1");
+        Map<String, Object> p1 = new HashMap<>();
+        p1.put("getNumber", 1);
+        p1.put("getPriceValue", new BigDecimal("100"));
+        Map<String, Object> p3 = new HashMap<>();
+        p3.put("getNumber", 3);
+        p3.put("getPriceValue", new BigDecimal("120"));  // выше обычной: не «цена 3», списание на позиции разрешено
+        g.put("getPriceInfos", java.util.Arrays.asList(fake(ru.crystals.pos.spi.receipt.PriceInfo.class, p1), fake(ru.crystals.pos.spi.receipt.PriceInfo.class, p3)));
         Map<String, Object> l = new HashMap<>();
         l.put("getNumber", 1);
         l.put("getQuantity", 1500L);

@@ -5,6 +5,7 @@ import ru.crystals.pos.spi.receipt.Card;
 import ru.crystals.pos.spi.receipt.CardType;
 import ru.crystals.pos.spi.receipt.LineItem;
 import ru.crystals.pos.spi.receipt.Merchandise;
+import ru.crystals.pos.spi.receipt.PriceInfo;
 import ru.crystals.pos.spi.receipt.ProcessedPayment;
 import ru.crystals.pos.spi.receipt.Receipt;
 import ru.crystals.pos.spi.receipt.ReceiptType;
@@ -251,6 +252,10 @@ final class AccrualRequestBuilder {
                 m.put("barcode", g.getBarcode());
                 m.put("marking", g.getMarking());
                 m.put("groupCode", g.getGroupCode());
+                List<Object> prices = prices(g);
+                if (!prices.isEmpty()) {
+                    m.put("prices", prices); // цены товара (1-я, 2-я, 3-я…): по ним сервер узнаёт, что Set10 поставит «цену 3»
+                }
             }
             // количество в кассе хранится в тысячных долях (1000 = 1 шт. или 1 кг)
             m.put("quantity", new BigDecimal(li.getQuantity()).movePointLeft(3).setScale(3, RoundingMode.HALF_UP).toPlainString());
@@ -273,6 +278,29 @@ final class AccrualRequestBuilder {
             if (mine != null) {
                 m.put("ownDiscount", money(mine));
             }
+            res.add(m);
+        }
+        return res;
+    }
+
+    private static List<Object> prices(Merchandise g) {
+        List<Object> res = new ArrayList<>();
+        List<PriceInfo> list = safe(g::getPriceInfos); // API 1.27.0+; на старых кассах — пусто
+        if (list == null) {
+            return res;
+        }
+        for (PriceInfo p : list) {
+            if (p == null) {
+                continue;
+            }
+            BigDecimal v = safe(p::getPriceValue);
+            Integer n = safe(p::getNumber);
+            if (v == null || n == null) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("number", n);
+            m.put("price", money(v));
             res.add(m);
         }
         return res;

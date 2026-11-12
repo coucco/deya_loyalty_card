@@ -126,6 +126,15 @@ test('кнопка кассира «оплатить бонусами»: пот�
   assert.equal((await pos('/api/v1/pos/redeem/rollback', { txId: w2.json.txId })).json.status, 'REVERSED');
   assert.equal((await pos('/api/v1/pos/redeem/rollback', { txId: w2.json.txId })).json.duplicate, true);
   assert.equal((await me(t)).balance, 200);
+  // кнопка кассира, а цена 3 поглотила скидку: при пробитии баллы возвращаются
+  await pos('/api/v1/pos/redeem/reserve', { ref: 'ref:K1:1:779', card: { number: card }, lines: [{ number: 1, sum: '209.90' }], mode: 'cashier', points: 10 });
+  await pos('/api/v1/pos/redeem/writeoff', { ref: 'ref:K1:1:779', points: 10 });
+  assert.equal((await me(t)).balance, 190);
+  const abs = await pos('/api/v1/accruals', receipt(card, 'fd:p:abs' + n, [{ number: 1, quantity: '1.000', price: '209.90', sum: '169.90', discount: '40.00',
+    prices: [{ number: 1, price: '209.90' }, { number: 3, price: '169.90' }],
+    discounts: [{ id: 'DEYA_BONUS', amount: '10.00' }, { id: null, guid: 3768, amount: '30.00' }] }], { receipt: { key: 'fd:p:abs' + n, ref: 'ref:K1:1:779', total: '169.90' } }));
+  assert.equal(abs.json.redeemed, 0);
+  assert.equal((await me(t)).balance, 200 + 8);
 });
 
 test('поддержка: смена номера, слияние двух профилей (1+1 карт), отвязка карты; всё в журнале', async () => {
