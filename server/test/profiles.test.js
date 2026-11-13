@@ -159,9 +159,10 @@ test('поддержка: смена номера, слияние двух пр�
   for (const act of ['profiles_merged', 'phone_changed_by_support']) assert.ok(all.includes(act), act);
   assert.ok(idb > 0);
   // отвязка пластика, привязанного по ошибке: баллы остаются в профиле, карта свободна
-  await admin('POST', '/api/admin/cards/import', { kind: 'physical', text: '999000000000120;1234' });
+  await admin('POST', '/api/admin/cards/import', { kind: 'physical', text: '999000000000120' });
   const t = await login('+79200000039');
-  await S.call('POST', '/api/me/cards/bind', { token: t, body: { number: '999000000000120', code: '1234' } });
+  await pos('/api/v1/pos/activate/start', { card: '999000000000120', phone: '+79200000039' });
+  await pos('/api/v1/pos/activate/confirm', { card: '999000000000120', phone: '+79200000039', code: lastCode() });
   assert.equal((await admin('POST', '/api/admin/cards/999000000000120/unbind', { reason: 'не тот клиент' })).json.status, 'free');
   assert.equal((await me(t)).balance, 150);
   assert.deepEqual((await me(t)).physicalCards, []);

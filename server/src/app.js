@@ -116,12 +116,8 @@ export function buildApp(cfg, { log = console, sms } = {}) {
     audit(db, 'user:' + u.id, 'phone_changed', { from: maskPhone(u.phone), to: maskPhone(phone) });
     return r;
   });
-  router.add('POST', '/api/me/cards/bind', ({ req, body }) => {   // привязка пластиковой карты
-    const u = userAuth(req);
-    bindLimit('b:' + u.id);
-    const r = L.bindPhysicalCard(db, cfg, u.id, body.number, body.code, body.replace === true);
-    audit(db, 'user:' + u.id, 'card_bound', { card: r.card.slice(-4), transferred: r.transferred, replaced: r.replaced ? r.replaced.slice(-4) : null });
-    return r;
+  router.add('POST', '/api/me/cards/bind', () => {   // привязка пластика в приложении отключена: только активация на кассе по СМС
+    throw new HttpError(410, 'bind_at_pos_only', 'Пластиковая карта активируется на кассе: покажите карту кассиру и назовите номер телефона');
   });
   router.add('DELETE', '/api/me', ({ req }) => {   // удаление аккаунта: персональные данные стираются, журнал баллов остаётся обезличенным
     const u = userAuth(req);

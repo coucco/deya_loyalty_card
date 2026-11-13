@@ -169,17 +169,24 @@ try:
         dec = zxingcpp.read_barcodes(cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_GRAYSCALE))
         check('штрихкод Code128 на экране считывается и содержит номер карты', len(dec) == 1 and dec[0].text == card and dec[0].format == zxingcpp.BarcodeFormat.Code128, str([(d.text, d.format) for d in dec]) + ' card=' + repr(card))
         page.click('text=Показать QR-код'); page.click('button.back'); page.wait_for_selector('text=Показать QR на кассе')
-        st, imp = req('POST', '/api/admin/cards/import', {'kind': 'physical', 'text': '5550000000001;4821'}, token=ADMIN)
+        st, imp = req('POST', '/api/admin/cards/import', {'kind': 'physical', 'text': '5550000000001'}, token=ADMIN)
         st, r = req('POST', '/api/v1/accruals', {'idempotencyKey': 'e2e-plastic-1', 'operation': 'SALE', 'card': {'number': '5550000000001'}, 'receipt': {'total': '1000.00'}, 'lines': [{'number': 1, 'sum': '1000.00'}]}, token=HKEY)
-        check('пластиковая карта без привязки копит баллы (+70)', st == 200 and r['accrued'] == 70, str(r))
-        page.click('text=Профиль'); page.click('text=Привязать пластиковую карту')
-        page.fill('input[placeholder="Номер с лицевой стороны"]', '5550 0000 0000 1'); page.fill('input[placeholder="Код активации (на обороте)"]', '4821')
+        check('пластиковая карта без активации копит баллы (+70)', st == 200 and r['accrued'] == 70, str(r))
+        st, _ = req('POST', '/api/me/cards/bind', {'number': '5550000000001'}, token=token)
+        check('привязать пластик в приложении нельзя (410)', st == 410)
+        # активация на кассе: кассир вводит телефон, покупатель называет код из СМС
+        req('POST', '/api/v1/pos/activate/start', {'card': '5550000000001', 'phone': '+79991234567'}, token=HKEY)
+        acode = None
+        for _ in range(40):
+            logf.flush(); logf.seek(0)
+            m = re.findall(r'\[SMS→\d+\] Код (\d{4}) для активации карты', logf.read())
+            if m: acode = m[-1]; break
+            time.sleep(0.1)
+        st, r = req('POST', '/api/v1/pos/activate/confirm', {'card': '5550000000001', 'phone': '+79991234567', 'code': acode}, token=HKEY)
+        check('пластик активирован на кассе, баллы перенесены (баланс 260)', st == 200 and req('GET', '/api/me', token=token)[1]['balance'] == 260, str(r))
+        page.click('text=Профиль'); page.wait_for_selector('text=активируется на кассе')
         page.screenshot(path=f'{SHOTS}/15-bind.png')
-        page.click('.sheet button.btn:not(.light)')
-        try: page.wait_for_selector('text=Карта привязана, перенесено 70 баллов', timeout=8000)
-        except Exception: print('       sheet:', page.locator('.sheet').inner_text() if page.locator('.sheet').count() else 'нет'); raise
-        page.wait_for_selector('text=Пластиковая карта')
-        check('карта привязана в приложении, баллы перенесены (баланс 260)', req('GET', '/api/me', token=token)[1]['balance'] == 260)
+        check('в профиле подсказка «активируется на кассе», пластик виден', page.locator('text=5550000000001').count() > 0)
         page.click('label.row-set:has-text("Списывать баллы в гипермаркете")'); page.wait_for_selector('text=Сохранено')
         check('переключатель «Списывать баллы в гипермаркете» сохраняется', req('GET', '/api/me', token=token)[1]['settings']['autoRedeem'] is True)
         page.screenshot(path=f'{SHOTS}/16-profile-settings.png')

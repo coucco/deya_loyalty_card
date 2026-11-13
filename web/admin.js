@@ -58,13 +58,13 @@ const POOL_NAMES = { virtual: 'виртуальные (QR)', physical: 'плас
 const STATUS_NAMES = { free: 'свободны', active: 'выданы', closed: 'закрыты', blocked: 'заблокированы' };
 function poolSection(pool) {
   const kind = h('select', null, h('option', { value: 'virtual' }, 'виртуальные (для QR в приложении)'), h('option', { value: 'physical' }, 'пластиковые'));
-  const text = h('textarea', { rows: 4, placeholder: 'По одному номеру в строке. Для пластиковых можно «номер;код активации»', style: 'width:100%;max-width:520px' });
+  const text = h('textarea', { rows: 4, placeholder: 'По одному номеру в строке', style: 'width:100%;max-width:520px' });
   const from = h('input', { type: 'text', placeholder: 'диапазон: с', style: 'width:160px' }), to = h('input', { type: 'text', placeholder: 'по', style: 'width:160px' });
   const out = h('div');
   const send = async (body) => {
     try { const r = await call('POST', '/api/admin/cards/import', { kind: kind.value, ...body }); out.textContent = `Добавлено: ${r.added}, уже были: ${r.skipped}` + (r.invalid.length ? `, неверные: ${r.invalid.join(', ')}` : '')
       + (r.conflicts.length ? `. ОШИБКА: уже загружены с другим типом (диапазоны виртуальных и пластиковых не должны пересекаться): ${r.conflicts.slice(0, 10).join(', ')}` : '')
-      + (r.withoutCode ? `. Внимание: ${r.withoutCode} пластиковых без кода активации — их сможет привязать любой, кто знает номер` : ''); setTimeout(load, 1500); }
+; setTimeout(load, 1500); }
     catch (e) { out.textContent = e.message; }
   };
   const blk = h('input', { type: 'text', placeholder: 'номер карты (утеря)', style: 'width:200px' }), bout = h('div');

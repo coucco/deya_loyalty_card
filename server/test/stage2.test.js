@@ -57,24 +57,26 @@ test('карта из пула, ещё не выданная клиенту, н�
   assert.equal(r.status, 422);
 });
 
-test('пластиковая карта: баллы копятся до привязки и переходят клиенту; код активации обязателен', async () => {
-  await admin('POST', '/api/admin/cards/import', { kind: 'physical', text: '5550000000001;4821\n5550000000002;1111' });
+test('пластиковая карта: баллы копятся до активации на кассе и переходят клиенту', async () => {
+  await admin('POST', '/api/admin/cards/import', { kind: 'physical', text: '5550000000001\n5550000000002' });
   const a = await accrue(receipt('5550000000001', 'fd:pl:1', [{ sum: '1000.00' }]));
   assert.equal(a.status, 200); assert.equal(a.json.accrued, 50);
   const u = await register('+79000000004');
-  const bad = await S.call('POST', '/api/me/cards/bind', { token: u.json.token, body: { number: '5550000000001', code: '0000' } });
-  assert.equal(bad.status, 400); assert.equal(bad.json.error, 'wrong_code');
-  const ok = await S.call('POST', '/api/me/cards/bind', { token: u.json.token, body: { number: '5550 0000 0000 1', code: '4821' } });
+  const pos = (p, body) => S.call('POST', p, { token: hyper, body });
+  await pos('/api/v1/pos/activate/start', { card: '5550000000001', phone: '+79000000004' });
+  const bad = await pos('/api/v1/pos/activate/confirm', { card: '5550000000001', phone: '+79000000004', code: '0000' === S.sms.outbox.at(-1).text.match(/(\d{4})/)[1] ? '1111' : '0000' });
+  assert.equal(bad.status, 400);
+  await pos('/api/v1/pos/activate/start', { card: '5550000000001', phone: '+79000000004' });
+  const ok = await pos('/api/v1/pos/activate/confirm', { card: '5550000000001', phone: '+79000000004', code: S.sms.outbox.at(-1).text.match(/(\d{4})/)[1] });
   assert.equal(ok.status, 200); assert.equal(ok.json.transferred, 50);
   const m = await me(u.json.token);
   assert.equal(m.balance, 50); assert.deepEqual(m.physicalCards, ['5550000000001']);
   // следующие покупки по пластику идут сразу на счёт клиента
   await accrue(receipt('5550000000001', 'fd:pl:2', [{ sum: '200.00' }]));
   assert.equal((await me(u.json.token)).balance, 60);
-  const other = await register('+79000000005');
-  const taken = await S.call('POST', '/api/me/cards/bind', { token: other.json.token, body: { number: '5550000000001', code: '4821' } });
+  const taken = await pos('/api/v1/pos/activate/start', { card: '5550000000001', phone: '+79000000005' });
   assert.equal(taken.status, 409);
-  // гостевой счёт непривязанной карты не может списывать
+  // гостевой счёт неактивированной карты не может списывать
   await accrue(receipt('5550000000002', 'fd:pl:3', [{ sum: '200.00' }]));
   const q = await S.call('POST', '/api/v1/redeem/quote', { token: cinema, body: { card: '5550000000002', checkTotal: '100' } });
   assert.equal(q.status, 422); assert.equal(q.json.error, 'card_not_bound');

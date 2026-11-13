@@ -53,7 +53,7 @@ try:
     print('списано 3, начислено 8, резерв снят:', 'ДА' if red_ok else 'НЕТ')
     ok = ok and red_ok
     # плагин карт: активация пластика на кассе по СМС и «оплатить бонусами» кнопкой кассира (режим external)
-    req('POST', '/api/admin/cards/import', {'kind': 'physical', 'text': '999000000000006;1111'}, token=ADMIN)
+    req('POST', '/api/admin/cards/import', {'kind': 'physical', 'text': '999000000000006'}, token=ADMIN)
     plastic_key = 'live-plastic-1'
     req('POST', '/api/v1/accruals', {'idempotencyKey': plastic_key, 'operation': 'SALE', 'card': {'number': '999000000000006'},
         'receipt': {'total': '2000.00'}, 'lines': [{'number': 1, 'sum': '2000.00'}]}, token=key)   # гостевой счёт: +100
