@@ -1,27 +1,32 @@
-# Какие документы актуальны
+# Документы
 
-## Команде внедрения и тестирования (Set10)
+## Команде внедрения Set10
 | Документ | Зачем |
 |---|---|
-| `set10-bonus-plugin/dist/DeyaBonusAccrualPlugin.jar` (1.2.3) | плагин; манифест внутри |
-| `set10-bonus-plugin/dist/INSTALL.pdf` | куда положить jar, какие 7 настроек вписать |
-| `docs/TEST_PLAN.pdf` | что проверять, по этапам, критерии успеха |
-| + лично от владельца | ключ `pk_…` |
+| `set10-bonus-plugin/dist/DeyaBonusAccrualPlugin.jar` (1.2.3) | плагин, манифест внутри |
+| `set10-bonus-plugin/dist/INSTALL.pdf` | куда положить jar, настройки, кассовая механика |
+| `docs/TEST_PLAN.pdf` | что проверять и какой результат правильный |
+| лично от владельца | ключ `pk_…` |
 
-## Владельцу (вам)
+## Типографии
+| Документ | Зачем |
+|---|---|
+| `docs/CARD_PRINT_SPEC.pdf` | ТЗ на пластиковые карты |
+| `docs/card/` | макет (SVG, PDF, PNG), файл номеров `numbers.csv` |
+| `docs/CARD_MOCKUP.pdf` | описание макета, промпт для ChatGPT |
+
+## Владельцу
 | Документ | Когда открывать |
 |---|---|
-| `docs/QUICKSTART.md` | сервер, `.env`, админка, первый чек — пошагово |
-| `docs/TEST_PLAN.md` | раздел «Где мы сейчас» — текущий статус теста |
-| `docs/BACKLOG.md` | что осталось до боя (СМС, домен, ИБ, юр. часть) |
+| `docs/TEST_PLAN.md` | «Где мы сейчас» - статус теста |
+| `docs/BACKLOG.md` | что осталось до боя и что позже |
 | `docs/GO_LIVE.md` | переход в прод: откат, риски, что поменять, пилот |
-| `docs/CARD_PRINT_SPEC.md` | ТЗ типографии на пластик |
-| `docs/ONBOARDING.md` | как устроена система (для нового человека) |
+| `docs/DEPLOY.md` | развёртывание сервера, резервные копии, обновление |
 
-## Справочники (по необходимости)
-`docs/PARAMETERS.md` — все параметры (`.env`, админка, Set10) · `docs/SET10_PLUGINS.md` — подробно о плагинах Set10 · `docs/DEPLOY.md` — развёртывание, копии · `docs/API.md` — API сервера.
-
-## Для разработчика
-`docs/ARCHITECTURE.md`, `docs/TESTING.md`, `set10-bonus-plugin/README.md`, `docs/IDEAS.md`.
-
-`docs/INTEGRATION.md` — **устарел**, заменён `QUICKSTART.md` + `TEST_PLAN.md`.
+## Справочники
+| Документ | Что внутри |
+|---|---|
+| `docs/PARAMETERS.md` | все параметры: `.env`, админка, Set10 |
+| `docs/SET10_PLUGINS.md` | какие методы плагинов Set10 вызываются и когда |
+| `docs/API.md` | API сервера |
+| `set10-bonus-plugin/README.md` | устройство плагина (для разработчика) |

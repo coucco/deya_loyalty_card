@@ -78,7 +78,7 @@
 | `GET /api/me` | баланс, карта (`null`, если пул пуст — выдаётся при следующем запросе), `physicalCards`, QR, `settings {autoRedeem, marketing}`, `pending` (коды подтверждения списаний), последняя операция |
 | `GET /api/me/history?limit=&before=` | журнал |
 | `PATCH /api/me` `{name?, autoRedeem?, marketing?}` | имя; списание в гипермаркете; согласие на рассылки (пишется в журнал) |
-| `POST /api/me/cards/bind` `{number, code, replace?}` | привязать пластиковую карту (баллы переносятся); вторая — только `replace:true`, старая блокируется |
+| `POST /api/me/cards/bind` | отключено (410 `bind_at_pos_only`): пластик активируется только на кассе, см. `/api/v1/pos/activate/*` |
 | `POST /api/me/phone/request` `{phone}` → `POST /api/me/phone/confirm` `{phone, code}` | смена номера: код на новый номер; ID профиля, баллы и карты не меняются |
 | `DELETE /api/me` | удалить аккаунт |
 | `GET /api/points` | публичные проценты: места трат и начисления |
