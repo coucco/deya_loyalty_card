@@ -74,8 +74,6 @@ const front = () => {
 <rect width="${CW}" height="${CH}" fill="${ORANGE}"/>
 <!-- фон и логотип из примера брендбука (в печать - векторный исходник дизайнера) -->
 <image x="0" y="0" width="${CW}" height="${CH}" preserveAspectRatio="xMidYMid slice" xlink:href="data:image/jpeg;base64,${img}"/>
-<!-- номер карты: персонализация (лазерная гравировка / индент-печать), белый или серебро -->
-<text id="card-number" x="${B + 6}" y="${B + H - 5.2}" font-family="${FONT}" font-weight="700" font-size="3.5" letter-spacing="0.35" fill="${WHITE}">${fmtNumber(NUMBER)}</text>
 ${guides}
 </svg>`;
 };
@@ -108,8 +106,8 @@ ${bc.svg}
 <rect x="${(qrX - 1.2).toFixed(2)}" y="${(qrY - 1.2).toFixed(2)}" width="${(qrSize + 2.4).toFixed(2)}" height="${(qrSize + 2.4).toFixed(2)}" rx="0.8" fill="${WHITE}"/>
 ${qr(qrX, qrY, qrSize)}
 ${t(right, capY, 2.05, 700, SITE, 'end')}
-${t(right, capY + 2.4, 1.7, 500, 'баланс, история операций', 'end')}
-${t(right, capY + 4.6, 1.7, 500, 'и правила программы лояльности', 'end')}
+${t(right, capY + 2.4, 1.7, 500, 'правила программы лояльности,', 'end')}
+${t(right, capY + 4.6, 1.7, 500, 'баланс, история операций', 'end')}
 <!-- правовая строка, поддержка, адрес -->
 ${t(left, B + H - SAFE - 2.6, 1.6, 500, 'Карта участника программы лояльности ТРЦ ДЕЯ. Правила - ' + SITE)}
 ${t(left, B + H - SAFE - 0.2, 1.6, 500, ADDRESS + '   ·   Поддержка: ' + SUPPORT)}
