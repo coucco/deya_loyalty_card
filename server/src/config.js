@@ -20,7 +20,7 @@ export function loadConfig(overrides = {}) {
     // юридические документы: версия попадает в журнал согласий; ссылки показываются на экране входа
     docsVersion: env.DOCS_VERSION || '1',
     publicUrl: (env.PUBLIC_URL || (env.DOMAIN ? 'https://' + env.DOMAIN : '')).replace(/\/$/, ''),   // для ссылок в СМС
-    support: { phone: env.SUPPORT_PHONE || '+7 929 838-45-16', email: env.SUPPORT_EMAIL || 'timurshokarov1001@gmail.com' },
+    support: { phone: env.SUPPORT_PHONE || '+7 929 838-45-16', email: env.SUPPORT_EMAIL || 'support@tc-deya.ru' },
     backupDir: env.BACKUP_DIR || '',                 // ежедневная копия БД (пусто = выключено)
     backupKeepDays: int('BACKUP_KEEP_DAYS', 14),
     auditKeepDays: int('AUDIT_KEEP_DAYS', 1095),     // журнал действий хранится 3 года

@@ -7,3 +7,4 @@ server/data/
 set10-bonus-plugin/build/
 set10-bonus-plugin/.gradle/
 __pycache__/
+docs/card/numbers.csv
