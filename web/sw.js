@@ -1,6 +1,6 @@
 // Минимальный service worker: делает приложение устанавливаемым и открывает оболочку без сети.
 // API-запросы НЕ кэшируются (баланс должен быть актуальным).
-const CACHE = 'deya-shell-v3';
+const CACHE = 'deya-shell-v4';
 const SHELL = ['/', '/app.css', '/app.js', '/lib.js', '/qr.js', '/barcode.js', '/assets/logo.png', '/assets/cinema.jpg', '/assets/bowling.jpg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
