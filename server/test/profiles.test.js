@@ -134,7 +134,7 @@ test('кнопка кассира «оплатить бонусами»: пот�
     prices: [{ number: 1, price: '209.90' }, { number: 3, price: '169.90' }],
     discounts: [{ id: 'DEYA_BONUS', amount: '10.00' }, { id: null, guid: 3768, amount: '30.00' }] }], { receipt: { key: 'fd:p:abs' + n, ref: 'ref:K1:1:779', total: '169.90' } }));
   assert.equal(abs.json.redeemed, 0);
-  assert.equal((await me(t)).balance, 200 + 8);
+  assert.equal((await me(t)).balance, 200);                       // баллы вернулись; по цене 3 баллы не начисляются
 });
 
 test('поддержка: смена номера, слияние двух профилей (1+1 карт), отвязка карты; всё в журнале', async () => {

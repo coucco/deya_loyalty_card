@@ -21,6 +21,7 @@
 | `docs/TEST_PLAN.md` | «Где мы сейчас» - статус теста |
 | `docs/BACKLOG.md` | что осталось до боя и что позже |
 | `docs/GO_LIVE.md` | переход в прод: откат, риски, что поменять, пилот |
+| `docs/SET10_QUESTIONS.md` (+ PDF) | вопросы команде Crystals |
 | `docs/DEPLOY.md` | развёртывание сервера, резервные копии, обновление |
 
 ## Справочники
@@ -29,4 +30,5 @@
 | `docs/PARAMETERS.md` | все параметры: `.env`, админка, Set10 |
 | `docs/SET10_PLUGINS.md` | какие методы плагинов Set10 вызываются и когда |
 | `docs/API.md` | API сервера |
+| `docs/SET10_QUESTIONS.md` | вопросы команде Crystals |
 | `set10-bonus-plugin/README.md` | устройство плагина (для разработчика) |

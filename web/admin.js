@@ -115,6 +115,7 @@ function draw(pts, stats, audit, pool, mx) {
   const accD = h('input', { type: 'checkbox' }); accD.checked = st.accrueOnDiscounted;
   const redD = h('input', { type: 'checkbox' }); redD.checked = st.redeemOnDiscounted;
   const p3 = h('input', { type: 'text', value: st.price3ActionIds.join(', '), placeholder: 'пусто = любая скидка Set10', style: 'width:300px' });
+  const npp = h('input', { type: 'text', value: (st.noPointsPrices || []).join(', '), placeholder: 'пусто = выкл.', style: 'width:80px' });
   const p3n = h('input', { type: 'text', value: (st.price3Numbers || []).join(', '), placeholder: 'пусто = выкл.', style: 'width:80px' });
   const q = h('input', { type: 'text', placeholder: 'телефон, карта или ID профиля' });
   const found = h('div'), client = h('div');
@@ -139,12 +140,13 @@ function draw(pts, stats, audit, pool, mx) {
       h('p', { style: 'margin-top:12px' }, nid, ' ', nname, ' ', nkind, ' ', h('button', { class: 'sbtn', onclick: async () => { try { await call('POST', '/api/admin/points', { id: nid.value.trim(), name: nname.value.trim(), kind: nkind.value }); load(); } catch (e) { alert(e.message); } } }, 'Добавить точку'))),
     h('section', null, h('h3', null, 'Правила расчёта'),
       h('p', null, '1 балл = ', rpp, ' ₽ · округление: ', rnd),
-      h('p', null, h('label', null, accD, ' начислять баллы на товары со скидкой Set10 («цена 3»)')),
-      h('p', null, h('label', null, redD, ' разрешать оплату баллами товаров со скидкой Set10 («цена 3»)')),
+      h('p', null, 'Цены товара без баллов (не начислять и не списывать), через запятую: ', npp, h('span', { style: 'color:var(--muted);font-size:13px' }, ' - акционная цена 3; цена 2 и обычные товары - с баллами')),
+      h('p', null, h('label', null, accD, ' начислять баллы на товары с другими скидками Set10')),
+      h('p', null, h('label', null, redD, ' разрешать оплату баллами товаров с другими скидками Set10')),
       h('p', null, 'Акции Set10 «цена 3» (id или guid через запятую): ', p3),
       h('p', null, 'Номера цен товара, которые ставят механики Set10 (цена 2, цена 3), через запятую: ', p3n, h('span', { style: 'color:var(--muted);font-size:13px' }, ' — на таких товарах баллы не списываются, пока Set10 ставит эти цены после скидки баллами (иначе скидка поглощается)')),
       h('p', null, h('button', { class: 'sbtn o', onclick: async () => { try { await call('PUT', '/api/admin/settings', { rub_per_point: rpp.value, rounding: rnd.value,
-        accrue_on_discounted: accD.checked, redeem_on_discounted: redD.checked, price3_action_ids: p3.value.split(',').map((x) => x.trim()).filter(Boolean).join(','), price3_number: p3n.value.trim() }); load(); } catch (e) { alert(e.message); } } }, 'Сохранить'))),
+        accrue_on_discounted: accD.checked, redeem_on_discounted: redD.checked, price3_action_ids: p3.value.split(',').map((x) => x.trim()).filter(Boolean).join(','), price3_number: p3n.value.trim(), no_points_prices: npp.value.trim() }); load(); } catch (e) { alert(e.message); } } }, 'Сохранить'))),
     poolSection(pool), metricsSection(mx),
     h('section', null, h('h3', null, 'Клиенты'), h('p', null, q, ' ', h('button', { class: 'sbtn o', onclick: search }, 'Найти'), ' ',
       h('button', { class: 'sbtn', onclick: async () => {

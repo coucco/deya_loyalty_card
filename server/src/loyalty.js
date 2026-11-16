@@ -17,8 +17,13 @@ const DEFAULT_SETTINGS = {
   // Set10 применяет её последней и доводит цену до неё — скидка баллами на такой позиции поглощается.
   // Поэтому на подытоге такие позиции не участвуют в списании, а при пробитии списываем только реальную выгоду. Пусто — выключено.
   price3_number: '3',
+  // Номера цен товара, на которые баллы НЕ начисляются и НЕ списываются (акционная «цена 3»). Пусто — выключено.
+  // Позиция «по такой цене», если у товара есть эта цена (ниже обычной) и Set10 её применил: итог позиции не выше суммы по этой цене.
+  no_points_prices: '3',
 };
 const BOOL_SETTINGS = ['accrue_on_discounted', 'redeem_on_discounted'];
+
+const numList = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).map(Number);
 
 export function getSettings(db) {
   const s = { ...DEFAULT_SETTINGS };
@@ -26,14 +31,14 @@ export function getSettings(db) {
   return { rubPerPoint: Number(s.rub_per_point), rounding: s.rounding, currency: s.currency,
     accrueOnDiscounted: s.accrue_on_discounted === '1', redeemOnDiscounted: s.redeem_on_discounted === '1',
     price3ActionIds: s.price3_action_ids.split(',').map((x) => x.trim()).filter(Boolean),
-    price3Numbers: String(s.price3_number).split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).map(Number) };
+    price3Numbers: numList(s.price3_number), noPointsPrices: numList(s.no_points_prices) };
 }
 export function setSetting(db, key, value) {
   if (!(key in DEFAULT_SETTINGS)) throw new HttpError(400, 'bad_setting', 'Неизвестная настройка');
   if (key === 'rub_per_point' && !(Number(value) > 0)) throw new HttpError(400, 'bad_value', 'rub_per_point > 0');
   if (key === 'rounding' && !['half_up', 'floor'].includes(value)) throw new HttpError(400, 'bad_value', 'half_up | floor');
   if (BOOL_SETTINGS.includes(key)) value = value === true || value === '1' || value === 1 ? '1' : '0';
-  if (key === 'price3_number' && !/^\s*(\d{1,2}\s*(,\s*\d{1,2}\s*)*)?$/.test(String(value))) throw new HttpError(400, 'bad_value', 'Номера цен: числа через запятую или пусто');
+  if ((key === 'price3_number' || key === 'no_points_prices') && !/^\s*(\d{1,2}\s*(,\s*\d{1,2}\s*)*)?$/.test(String(value))) throw new HttpError(400, 'bad_value', 'Номера цен: числа через запятую или пусто');
   if (key === 'price3_action_ids' && String(value).length > 2000) throw new HttpError(400, 'bad_value', 'Слишком длинный список');
   run(db, 'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, String(value));
 }
@@ -286,6 +291,31 @@ export function priceTargets(line, settings, anyPrice = false) {
     .filter((unit) => unit > 0 && (regular == null || unit < regular))
     .map((unit) => Math.round(unit * qty)).sort((a, b) => a - b);
 }
+/** Сумма позиции по цене № n (копейки), если у товара она есть и ниже обычной; иначе null. */
+function priceTotal(line, n) {
+  if (!Array.isArray(line?.prices)) return null;
+  const p = line.prices.find((x) => x && Number(x.number) === n);
+  if (!p) return null;
+  const qty = Number(line.quantity ?? 1), unit = Math.abs(parseKop(String(p.price ?? '0')));
+  const regular = line.price != null ? Math.abs(parseKop(String(line.price))) : null;
+  if (!(qty > 0) || !(unit > 0) || (regular != null && unit >= regular)) return null;
+  return Math.round(unit * qty);
+}
+/**
+ * Позиция продана по «цене без баллов» (цена 3): у товара есть такая цена, на позиции есть скидка Set10,
+ * и итог позиции не выше суммы по этой цене (+1 коп. на округление). Цена 2 сюда не входит.
+ */
+export function soldAtNoPointsPrice(line, settings) {
+  if (!settings.noPointsPrices?.length || !hasOtherDiscount(line)) return false;
+  const sum = Math.abs(parseKop(String(line.sum ?? '0')));
+  return settings.noPointsPrices.some((n) => { const t = priceTotal(line, n); return t != null && sum <= t + 1; });
+}
+/** На подытоге: Set10 поставит (или уже поставил) «цену без баллов» — сумма по ней не выше текущей суммы позиции. */
+function noPointsPricePending(line, settings) {
+  if (!settings.noPointsPrices?.length) return false;
+  const sum = Math.abs(parseKop(String(line.sum ?? '0')));
+  return settings.noPointsPrices.some((n) => { const t = priceTotal(line, n); return t != null && t <= sum + 1; });
+}
 const ownDiscountKop = (line) => (Array.isArray(line?.discounts) ? line.discounts : [])
   .filter((d) => d && d.id === 'DEYA_BONUS').reduce((x, d) => x + Math.abs(parseKop(String(d.amount ?? '0'))), 0);
 const hasOtherDiscount = (line) => (Array.isArray(line?.discounts) ? line.discounts : [])
@@ -319,10 +349,11 @@ export function effectiveRedemption(redemption, payload, settings) {
 }
 
 /** База начисления: строки с accrueAllowed!==false (и без цены 3, если так настроено), сумма уже после скидок. Нет строк — итог чека. */
-export function accrualBase(payload, settings = { accrueOnDiscounted: true, price3ActionIds: [] }) {
+export function accrualBase(payload, settings = { accrueOnDiscounted: true, price3ActionIds: [], noPointsPrices: [] }) {
   const lines = Array.isArray(payload.lines) ? payload.lines : [];
   if (lines.length) {
-    return lines.filter((l) => l.accrueAllowed !== false && (settings.accrueOnDiscounted || !hasSet10Discount(l, settings)))
+    return lines.filter((l) => l.accrueAllowed !== false && (settings.accrueOnDiscounted || !hasSet10Discount(l, settings))
+        && !soldAtNoPointsPrice(l, settings))   // по цене 3 баллы не начисляются
       .reduce((s, l) => s + Math.abs(parseKop(l.sum ?? '0')), 0);
   }
   return Math.abs(parseKop(payload.receipt?.total ?? '0'));
@@ -407,7 +438,7 @@ function price3Pending(line, settings) {
 
 function posEligible(lines, settings) {
   return (Array.isArray(lines) ? lines : []).filter((l) => l && l.payBonusAllowed !== false && (settings.redeemOnDiscounted || !hasSet10Discount(l, settings))
-      && !price3Pending(l, settings))
+      && !price3Pending(l, settings) && !noPointsPricePending(l, settings))   // по цене 3 баллы не списываются
     .map((l) => {
       const sum = Math.abs(parseKop(l.sum ?? '0')), min = l.minSum != null ? Math.abs(parseKop(l.minSum)) : 0;
       return { number: l.number, sum, cap: Math.max(0, sum - Math.max(min, 1)) }; // на строке остаётся хотя бы 1 копейка
